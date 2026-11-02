@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="ethioprepGrad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1D4ED8" />
+      <stop offset="50%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#7C3AED" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#ethioprepGrad)" />
+  <path
+    d="M116 148C116 130.327 130.327 116 148 116H232C249.673 116 264 130.327 264 148V380C264 366.745 253.255 356 240 356H148C130.327 356 116 341.673 116 324V148Z"
+    fill="rgba(255,255,255,0.88)"
+  />
+  <path
+    d="M396 148C396 130.327 381.673 116 364 116H280C262.327 116 248 130.327 248 148V380C248 366.745 258.745 356 272 356H364C381.673 356 396 341.673 396 324V148Z"
+    fill="#FFFFFF"
+  />
+  <rect x="284" y="168" width="80" height="20" rx="10" fill="#2563EB" />
+  <rect x="284" y="212" width="80" height="20" rx="10" fill="#4F46E5" />
+  <rect x="284" y="256" width="56" height="20" rx="10" fill="#7C3AED" />
+  <circle cx="190" cy="228" r="40" fill="#1D4ED8" />
+  <text x="190" y="244" text-anchor="middle" fill="#FFFFFF" font-family="system-ui, sans-serif" font-weight="900" font-size="48">E</text>
+</svg>
