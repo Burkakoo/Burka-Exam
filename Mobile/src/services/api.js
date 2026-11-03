@@ -1,6 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000/api";
+const API_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  (__DEV__ ? "http://10.0.2.2:5000/api" : "https://burka-exam-backend.onrender.com/api");
 
 let refreshPromise = null;
 

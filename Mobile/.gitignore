@@ -1,1 +1,4 @@
 .expo/
+.env
+.env.local
+
