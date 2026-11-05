@@ -611,6 +611,21 @@ export function PracticeModeScreen({
     }
   }
 
+  function handleExitToMenu() {
+    setSessionActive(false);
+    setSessionCompleted(false);
+    setResultsSummary(null);
+    setQuestions([]);
+    setCurrentIndex(0);
+    setAnswers({});
+    setSkipped({});
+    setFlagged({});
+    setInstantReviews({});
+    setTimeSpentMap({});
+    setElapsedSeconds(0);
+    setIsPaused(false);
+  }
+
   // Restart session with skipped questions only
   function handleRetrySkipped() {
     if (!resultsSummary) return;
@@ -782,7 +797,7 @@ export function PracticeModeScreen({
             )}
 
             <TouchableOpacity
-              onPress={() => setSessionActive(false)}
+              onPress={handleExitToMenu}
               style={[styles.secondaryButton, { marginBottom: SPACING.sm }]}
             >
               <Icon color={COLORS.primary} name="home" size={18} />
@@ -972,7 +987,7 @@ export function PracticeModeScreen({
         {/* Top Control Bar */}
         <View style={styles.focusTopBar}>
           <TouchableOpacity
-            onPress={() => setSessionActive(false)}
+            onPress={handleExitToMenu}
             style={styles.exitButton}
           >
             <Icon color={COLORS.danger} name="close-circle-outline" size={20} />

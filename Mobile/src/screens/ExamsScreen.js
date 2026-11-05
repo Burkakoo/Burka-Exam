@@ -187,7 +187,12 @@ export function ExamsScreen({ exams = [], onStartExam, loadingExamId, user, isPr
               ]}
             >
               {isExamPremium && (
-                <Icon name="lock-closed" size={11} color={COLORS.gold} style={{ marginRight: 3 }} />
+                <Icon
+                  name={isLocked ? "lock-closed" : "star"}
+                  size={11}
+                  color={COLORS.gold}
+                  style={{ marginRight: 3 }}
+                />
               )}
               <Text
                 style={[
