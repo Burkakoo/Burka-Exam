@@ -751,6 +751,7 @@ export function ExamActiveScreen({
         </Text>
       </View>
 
+      <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
       <Text style={styles.examTitle}>{exam?.title || "Active Examination"}</Text>
 
       {!result && onChangeShowAnswerMode ? (
@@ -859,12 +860,20 @@ export function ExamActiveScreen({
           Back to Practice Exams
         </Button>
       )}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    paddingBottom: SPACING.xl * 2
+  },
+  scrollArea: {
+    flex: 1
+  },
+  scrollContent: {
     paddingBottom: SPACING.xl * 2
   },
   topBar: {
