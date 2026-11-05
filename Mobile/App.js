@@ -33,7 +33,7 @@ import {
   request,
   requestWithOfflineQueue
 } from "./src/services/api.js";
-import { getQueue, queueMutation } from "./src/services/offlineQueue.js";
+import { getQueue, queueMutation, syncQueuedMutations } from "./src/services/offlineQueue.js";
 import { isUserPremium } from "./src/utils/auth.js";
 import { COLORS, RADIUS, SPACING } from "./src/utils/theme.js";
 
@@ -48,6 +48,13 @@ const TABS = [
 
 function generateId() {
   return "m_" + Math.random().toString(36).substring(2, 10);
+}
+
+// 24-char hex string compatible with MongoDB ObjectId validation
+function generateObjectId() {
+  const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, "0");
+  const random = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+  return timestamp + random;
 }
 
 function MainDashboard({ user, onLogout }) {
@@ -177,6 +184,7 @@ function MainDashboard({ user, onLogout }) {
   useEffect(() => {
     loadCachedData();
     loadDashboardData();
+    flushOfflineQueue();
     refreshQueue();
   }, []);
 
@@ -201,6 +209,22 @@ function MainDashboard({ user, onLogout }) {
       setQueueCount(q.length);
     } catch {
       // ignore
+    }
+  }
+
+  const flushingQueueRef = useRef(false);
+  async function flushOfflineQueue() {
+    if (flushingQueueRef.current) return;
+    flushingQueueRef.current = true;
+    try {
+      const result = await syncQueuedMutations(request);
+      if (result && (result.remaining > 0 || result.synced > 0)) {
+        refreshQueue();
+      }
+    } catch {
+      // offline or sync endpoint unavailable — keep queue for next attempt
+    } finally {
+      flushingQueueRef.current = false;
     }
   }
 
@@ -373,6 +397,7 @@ function MainDashboard({ user, onLogout }) {
         message: `Exam submitted! Score: ${result.attempt.percentage}%`
       });
       loadDashboardData();
+      flushOfflineQueue();
       return result;
     } catch (error) {
       // Offline fallback: grade answers locally if network is offline
@@ -430,18 +455,32 @@ function MainDashboard({ user, onLogout }) {
           }
         };
 
-        // Queue progress mutation for sync when back online
+        // Queue exam attempt for sync when back online
+        const isRealAttemptId = /^[a-f0-9]{24}$/i.test(String(attemptId));
+        const resultsByQid = new Map(
+          (questionResults || []).map((r) => [String(r.questionId), r])
+        );
+        const syncAnswers = (answers || []).map((a) => ({
+          questionId: a.questionId,
+          selectedOptionKeys: Array.isArray(a.selectedOptionKeys) ? a.selectedOptionKeys : [],
+          response: a.response,
+          isCorrect: Boolean(resultsByQid.get(String(a.questionId))?.isCorrect),
+          answeredAt: new Date().toISOString()
+        }));
         queueMutation({
-          operation: "submit_exam",
-          entity: "progress",
-          entityId: attemptId,
+          operation: "create",
+          entity: "exam_attempt",
+          entityId: isRealAttemptId ? attemptId : generateObjectId(),
           payload: {
             attemptId,
-            answers,
+            examId: activeExamSession.exam?._id,
+            chapterId: activeExamSession.attempt?.chapterId || activeExamSession.exam?.chapterId || undefined,
+            answers: syncAnswers,
             score,
             percentage,
             passed,
-            examId: activeExamSession.exam?._id
+            submittedAt: new Date().toISOString(),
+            syncedOffline: true
           }
         }).catch(() => {});
 
@@ -470,7 +509,12 @@ function MainDashboard({ user, onLogout }) {
           method: "POST",
           body: JSON.stringify({ ...notePayload, localId })
         },
-        { operation: "create", entity: "note", entityId: localId, payload: notePayload }
+        {
+          operation: "create",
+          entity: "note",
+          entityId: generateObjectId(),
+          payload: { ...notePayload, localId }
+        }
       );
 
       setNotice({
@@ -479,7 +523,10 @@ function MainDashboard({ user, onLogout }) {
       });
 
       refreshQueue();
-      if (result.online) loadDashboardData();
+      if (result.online) {
+        loadDashboardData();
+        flushOfflineQueue();
+      }
     } catch (error) {
       setNotice({ type: "error", message: error.message || "Failed to save note." });
     } finally {
@@ -498,7 +545,12 @@ function MainDashboard({ user, onLogout }) {
           method: "POST",
           body: JSON.stringify({ ...progressPayload, localUpdatedAt: new Date().toISOString() })
         },
-        { operation: "upsert", entity: "progress", entityId: localId, payload: progressPayload }
+        {
+          operation: "upsert",
+          entity: "progress",
+          entityId: generateObjectId(),
+          payload: progressPayload
+        }
       );
 
       setNotice({
@@ -507,7 +559,10 @@ function MainDashboard({ user, onLogout }) {
       });
 
       refreshQueue();
-      if (result.online) loadDashboardData();
+      if (result.online) {
+        loadDashboardData();
+        flushOfflineQueue();
+      }
     } catch (error) {
       setNotice({ type: "error", message: error.message || "Failed to log progress." });
     } finally {
@@ -526,7 +581,12 @@ function MainDashboard({ user, onLogout }) {
           method: "POST",
           body: JSON.stringify({ ...paymentPayload, clientMutationId })
         },
-        { operation: "create", entity: "payment", entityId: clientMutationId, payload: paymentPayload }
+        {
+          operation: "create",
+          entity: "payment",
+          entityId: generateObjectId(),
+          payload: { ...paymentPayload, clientMutationId }
+        }
       );
 
       setNotice({
@@ -537,7 +597,10 @@ function MainDashboard({ user, onLogout }) {
       });
 
       refreshQueue();
-      if (result.online) loadDashboardData();
+      if (result.online) {
+        loadDashboardData();
+        flushOfflineQueue();
+      }
     } catch (error) {
       setNotice({ type: "error", message: error.message || "Failed to submit payment." });
     } finally {

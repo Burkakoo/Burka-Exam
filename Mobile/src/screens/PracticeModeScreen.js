@@ -236,11 +236,13 @@ export function PracticeModeScreen({
 
       if (targetExam?._id) {
         try {
-          const querySuffix = targetGrade !== "all" ? `?gradeLevel=grade-${targetGrade}` : "";
+          const gradeParam = targetGrade !== "all" ? `gradeLevel=grade-${targetGrade}&` : "";
+          const querySuffix = `?${gradeParam}purpose=practice`;
           const examData = await request(`/exams/${targetExam._id}/start${querySuffix}`, {
             method: "POST",
             body: JSON.stringify({
-              gradeLevel: targetGrade !== "all" ? `grade-${targetGrade}` : undefined
+              gradeLevel: targetGrade !== "all" ? `grade-${targetGrade}` : undefined,
+              purpose: "practice"
             })
           });
 
@@ -278,7 +280,8 @@ export function PracticeModeScreen({
                 const otherData = await request(`/exams/${otherExam._id}/start${querySuffix}`, {
                   method: "POST",
                   body: JSON.stringify({
-                    gradeLevel: targetGrade !== "all" ? `grade-${targetGrade}` : undefined
+                    gradeLevel: targetGrade !== "all" ? `grade-${targetGrade}` : undefined,
+                    purpose: "practice"
                   })
                 });
                 let otherQs = otherData?.exam?.questions || [];

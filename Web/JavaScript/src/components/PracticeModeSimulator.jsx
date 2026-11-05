@@ -1498,11 +1498,13 @@ export function PracticeModeSimulator({
 
               if (primaryExam?._id) {
                 try {
-                  const querySuffix = gradeToUse !== "all" ? `?gradeLevel=grade-${gradeToUse}` : "";
+                  const gradeParam = gradeToUse !== "all" ? `gradeLevel=grade-${gradeToUse}&` : "";
+                  const querySuffix = `?${gradeParam}purpose=practice`;
                   const examData = await apiRequest(`/exams/${primaryExam._id}/start${querySuffix}`, {
                     method: "POST",
                     body: JSON.stringify({
-                      gradeLevel: gradeToUse !== "all" ? `grade-${gradeToUse}` : undefined
+                      gradeLevel: gradeToUse !== "all" ? `grade-${gradeToUse}` : undefined,
+                      purpose: "practice"
                     })
                   });
 
@@ -1529,7 +1531,8 @@ export function PracticeModeSimulator({
                         const otherData = await apiRequest(`/exams/${otherExam._id}/start${querySuffix}`, {
                           method: "POST",
                           body: JSON.stringify({
-                            gradeLevel: gradeToUse !== "all" ? `grade-${gradeToUse}` : undefined
+                            gradeLevel: gradeToUse !== "all" ? `grade-${gradeToUse}` : undefined,
+                            purpose: "practice"
                           })
                         });
                         const otherQs = otherData?.exam?.questions || [];

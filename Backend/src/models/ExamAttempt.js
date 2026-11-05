@@ -19,6 +19,15 @@ const examAttemptSchema = new mongoose.Schema(
       ref: "Chapter",
       index: true
     },
+    purpose: {
+      type: String,
+      enum: ["exam", "practice"],
+      default: "exam"
+    },
+    syncedOffline: {
+      type: Boolean,
+      default: false
+    },
     status: {
       type: String,
       enum: ["in_progress", "submitted", "expired", "abandoned"],

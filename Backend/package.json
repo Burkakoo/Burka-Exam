@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test src/config/jwt.test.js",
+    "test": "node --experimental-test-module-mocks --test src/config/jwt.test.js src/services/auth.service.test.js src/controllers/exam.submit.test.js src/controllers/notes.sync.test.js",
     "seed": "node src/seeds/seed.js",
     "seed:grade9-10": "node src/scripts/seedGrade9_10Subjects.js",
     "seed:grade11": "node src/scripts/seedGrade11Subjects.js",

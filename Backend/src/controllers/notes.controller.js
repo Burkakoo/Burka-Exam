@@ -172,10 +172,16 @@ export async function syncChanges(request, response) {
         status: "failed"
       };
 
+      const allowedOpsByEntity = {
+        note: ["create", "update", "delete"],
+        progress: ["create", "update", "upsert", "delete"],
+        payment: ["create"],
+        exam_attempt: ["create"]
+      };
+
       if (
         !change.clientMutationId ||
-        !["create", "update", "delete"].includes(change.operation) ||
-        !["note", "progress", "payment"].includes(change.entity) ||
+        !allowedOpsByEntity[change.entity]?.includes(change.operation) ||
         !mongoose.isValidObjectId(change.entityId)
       ) {
         result.error = "Invalid sync change.";
@@ -200,6 +206,8 @@ export async function syncChanges(request, response) {
       try {
         if (change.entity === "note") {
           await applyNoteChange(request.user._id, change);
+        } else if (change.entity === "exam_attempt") {
+          await applyExamAttemptChange(request.user._id, change);
         } else if (change.entity === "progress") {
           await applyProgressChange(request.user._id, change);
         } else {
@@ -349,5 +357,56 @@ async function applyPaymentChange(userId, change) {
     clientMutationId: change.clientMutationId,
     status: "pending"
   });
+}
+
+async function applyExamAttemptChange(userId, change) {
+  const { ExamAttempt } = await import("../models/ExamAttempt.js");
+  const payload = change.payload && typeof change.payload === "object" ? change.payload : {};
+
+  if (!mongoose.isValidObjectId(payload.examId)) {
+    throw new Error("examId is required for exam attempt sync.");
+  }
+
+  const score = Number(payload.score);
+  const percentage = Number(payload.percentage);
+  if (!Number.isFinite(score) || score < 0 || !Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
+    throw new Error("Valid score and percentage are required for exam attempt sync.");
+  }
+
+  const answers = Array.isArray(payload.answers)
+    ? payload.answers
+        .filter((a) => a && mongoose.isValidObjectId(a.questionId))
+        .map((a) => ({
+          questionId: a.questionId,
+          selectedOptionKeys: Array.isArray(a.selectedOptionKeys) ? a.selectedOptionKeys : [],
+          response: a.response,
+          isCorrect: Boolean(a.isCorrect),
+          pointsAwarded: a.isCorrect ? 1 : 0,
+          answeredAt: a.answeredAt ? new Date(a.answeredAt) : new Date()
+        }))
+    : [];
+
+  const updates = {
+    userId,
+    examId: payload.examId,
+    status: "submitted",
+    score,
+    percentage,
+    passed: Boolean(payload.passed),
+    submittedAt: payload.submittedAt ? new Date(payload.submittedAt) : new Date(),
+    answers
+  };
+  if (mongoose.isValidObjectId(payload.chapterId)) {
+    updates.chapterId = payload.chapterId;
+  }
+  if (payload.syncedOffline === true) {
+    updates.syncedOffline = true;
+  }
+
+  await ExamAttempt.findOneAndUpdate(
+    { _id: change.entityId, userId },
+    { $set: updates },
+    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+  );
 }
 

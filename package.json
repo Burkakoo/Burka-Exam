@@ -17,7 +17,7 @@
     "mobile:start": "npm --prefix Mobile start",
     "check": "npm --workspace=Backend run check",
     "lint": "npm run check",
-    "test": "node --test Backend/src/config/jwt.test.js Web/JavaScript/src/utils/questionContentParser.test.js Web/JavaScript/src/utils/practiceStreamFilter.test.js Web/JavaScript/src/utils/examPracticeOrganizer.test.js Web/JavaScript/src/utils/offlineExamEngine.test.js"
+    "test": "node --experimental-test-module-mocks --test Backend/src/config/jwt.test.js Backend/src/services/auth.service.test.js Backend/src/controllers/exam.submit.test.js Backend/src/controllers/notes.sync.test.js Web/JavaScript/src/utils/questionContentParser.test.js Web/JavaScript/src/utils/practiceStreamFilter.test.js Web/JavaScript/src/utils/examPracticeOrganizer.test.js Web/JavaScript/src/utils/offlineExamEngine.test.js"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",

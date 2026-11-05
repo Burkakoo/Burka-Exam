@@ -485,13 +485,16 @@ export async function startExamAttempt(request, response) {
     const chapterId = request.query.chapterId || request.body?.chapterId;
     const validChapterId = chapterId && mongoose.isValidObjectId(chapterId) ? chapterId : undefined;
     const allYears = request.query.allYears === "true" || request.body?.allYears === true;
+    const isPractice = request.query.purpose === "practice" || request.body?.purpose === "practice";
 
-    const attempt = await ExamAttempt.create({
-      userId: request.user._id,
-      examId,
-      ...(validChapterId ? { chapterId: validChapterId } : {}),
-      status: "in_progress"
-    });
+    const attempt = isPractice
+      ? null
+      : await ExamAttempt.create({
+          userId: request.user._id,
+          examId,
+          ...(validChapterId ? { chapterId: validChapterId } : {}),
+          status: "in_progress"
+        });
 
     // Map questionId -> examYear across published exams if allYears is requested
     const questionYearMap = new Map();
