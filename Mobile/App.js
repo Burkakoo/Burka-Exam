@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
@@ -277,6 +277,14 @@ function MainDashboard({ user, onLogout }) {
     setPendingExamPrompt({ examItem, options });
   }
 
+  function isPopulatedQuestion(q) {
+    if (q === null || typeof q !== "object") return false;
+    if (!q._id) return false;
+    const hasText = Boolean(q.text || q.questionText || q.prompt || q.stem);
+    const hasOptions = Array.isArray(q.options) ? q.options.length > 0 : Boolean(q.options);
+    return hasText || hasOptions;
+  }
+
   async function handleStartExam(examItem, options = {}) {
     if (!examItem) return;
     if (examItem.accessLevel === "premium" && !isPremium) {
@@ -291,9 +299,7 @@ function MainDashboard({ user, onLogout }) {
       setShowAnswerMode(options.showAnswerMode);
     }
     setPendingExamPrompt(null);
-    const loadingKey = options?.chapterId
-      ? `${examItem._id}_${options.chapterId}${options.allYears ? "_all" : ""}`
-      : examItem._id;
+    const loadingKey = examItem._id;
     setLoadingExamId(loadingKey);
     setNotice(null);
 
@@ -311,8 +317,9 @@ function MainDashboard({ user, onLogout }) {
 
       // Cache this exam session and questions for offline use
       AsyncStorage.setItem(sessionCacheKey, JSON.stringify(examData)).catch(() => {});
-      if (examData?.exam?.questions?.length > 0) {
-        AsyncStorage.setItem(generalExamCacheKey, JSON.stringify(examData.exam.questions)).catch(() => {});
+      const populatedQs = (examData?.exam?.questions || []).filter(isPopulatedQuestion);
+      if (populatedQs.length > 0) {
+        AsyncStorage.setItem(generalExamCacheKey, JSON.stringify(populatedQs)).catch(() => {});
       }
     } catch (error) {
       // Offline fallback: check cached exam session
@@ -320,32 +327,91 @@ function MainDashboard({ user, onLogout }) {
         const cachedRaw = await AsyncStorage.getItem(sessionCacheKey);
         if (cachedRaw) {
           const cachedSession = JSON.parse(cachedRaw);
-          const offlineAttemptId = `offline_attempt_${Date.now()}`;
-          const localSession = {
-            ...cachedSession,
-            attempt: {
-              ...(cachedSession.attempt || {}),
-              _id: offlineAttemptId,
-              status: "in_progress",
-              isOffline: true
+          const validSessionQs = Array.isArray(cachedSession?.exam?.questions)
+            ? cachedSession.exam.questions.filter(isPopulatedQuestion)
+            : [];
+          if (validSessionQs.length > 0) {
+            let sessionQuestions = validSessionQs;
+            if (options?.chapterId) {
+              const chQs = validSessionQs.filter((q) => String(q.chapterId) === String(options.chapterId));
+              if (chQs.length > 0) sessionQuestions = chQs;
             }
-          };
-          setActiveExamSession(localSession);
-          setNotice({
-            type: "info",
-            message: "Offline practice mode: Loaded cached exam session."
-          });
-          return;
+            const offlineAttemptId = `offline_attempt_${Date.now()}`;
+            const localSession = {
+              ...cachedSession,
+              attempt: {
+                ...(cachedSession.attempt || {}),
+                _id: offlineAttemptId,
+                status: "in_progress",
+                isOffline: true
+              },
+              exam: {
+                ...(cachedSession.exam || {}),
+                questions: sessionQuestions
+              }
+            };
+            setActiveExamSession(localSession);
+            setNotice({
+              type: "info",
+              message: "Offline practice mode: Loaded cached exam session."
+            });
+            return;
+          }
+        }
+
+        // B5 fallback: if full-exam session key missed, scan for any chapter session for this exam
+        if (!options?.chapterId) {
+          try {
+            const allKeys = await AsyncStorage.getAllKeys();
+            const examSessionPrefix = `@ethioprep_cached_exam_session_${examItem._id}_`;
+            const relatedKeys = (allKeys || []).filter(
+              (k) => k.startsWith(examSessionPrefix) && k !== sessionCacheKey
+            );
+            for (const relatedKey of relatedKeys) {
+              const relatedRaw = await AsyncStorage.getItem(relatedKey);
+              if (relatedRaw) {
+                const relatedSession = JSON.parse(relatedRaw);
+                const validRelatedQs = Array.isArray(relatedSession?.exam?.questions)
+                  ? relatedSession.exam.questions.filter(isPopulatedQuestion)
+                  : [];
+                if (validRelatedQs.length > 0) {
+                  const offlineAttemptId = `offline_attempt_${Date.now()}`;
+                  const localSession = {
+                    ...relatedSession,
+                    attempt: {
+                      ...(relatedSession.attempt || {}),
+                      _id: offlineAttemptId,
+                      status: "in_progress",
+                      isOffline: true
+                    },
+                    exam: {
+                      ...(relatedSession.exam || {}),
+                      questions: validRelatedQs
+                    }
+                  };
+                  setActiveExamSession(localSession);
+                  setNotice({
+                    type: "info",
+                    message: "Offline practice mode: Loaded cached exam session."
+                  });
+                  return;
+                }
+              }
+            }
+          } catch {
+            // ignore scan errors, fall through to general cache
+          }
         }
 
         // Secondary fallback: check general exam cache
         const cachedQsRaw = await AsyncStorage.getItem(generalExamCacheKey);
         if (cachedQsRaw) {
           const cachedQs = JSON.parse(cachedQsRaw);
-          if (Array.isArray(cachedQs) && cachedQs.length > 0) {
-            let filteredQs = cachedQs;
+          const validCachedQs = Array.isArray(cachedQs) ? cachedQs.filter(isPopulatedQuestion) : [];
+          if (validCachedQs.length > 0) {
+            let filteredQs = validCachedQs;
             if (options?.chapterId) {
-              filteredQs = cachedQs.filter((q) => String(q.chapterId) === String(options.chapterId));
+              filteredQs = validCachedQs.filter((q) => String(q.chapterId) === String(options.chapterId));
             }
             if (filteredQs.length > 0) {
               const offlineAttemptId = `offline_attempt_${Date.now()}`;
@@ -377,7 +443,7 @@ function MainDashboard({ user, onLogout }) {
 
       setNotice({
         type: "error",
-        message: "Network offline and this exam is not cached yet. Connect once to download exams for offline practice."
+        message: "This exam is not available offline yet. Open it once while connected to cache it for offline practice."
       });
     } finally {
       setLoadingExamId(null);

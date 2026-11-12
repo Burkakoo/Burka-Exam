@@ -1,35 +1,33 @@
 {
-    "expo":  {
-                 "slug":  "burka-exam",
-                 "ios":  {
-                             "supportsTablet":  true,
-                             "bundleIdentifier":  "com.burkaexam.mobile"
-                         },
-                 "owner":  "burkaapps",
-                 "version":  "1.0.0",
-                 "orientation":  "portrait",
-                 "icon":  "./assets/icon.png",
-                 "android":  {
-                                 "versionCode":  15,
-                                 "permissions":  [
-                                                     "INTERNET",
-                                                     "ACCESS_NETWORK_STATE"
-                                                 ],
-                                 "adaptiveIcon":  {
-                                                      "backgroundColor":  "#000000",
-                                                      "foregroundImage":  "./assets/adaptive-icon.png"
-                                                  },
-                                 "package":  "com.burkaexam.mobile"
-                             },
-                 "name":  "Burka Exam",
-                 "userInterfaceStyle":  "dark",
-                 "extra":  {
-                               "eas":  {
-                                           "projectId":  "702754b6-355e-4638-b3d8-2315f2ec4526"
-                                       }
-                           },
-                 "plugins":  [
-
-                             ]
-             }
+  "expo": {
+    "slug": "burka-exam",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.burkaexam.mobile"
+    },
+    "owner": "burkaapps",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "android": {
+      "versionCode": 16,
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "package": "com.burkaexam.mobile"
+    },
+    "name": "Burka Exam",
+    "userInterfaceStyle": "dark",
+    "extra": {
+      "eas": {
+        "projectId": "702754b6-355e-4638-b3d8-2315f2ec4526"
+      }
+    },
+    "plugins": []
+  }
 }

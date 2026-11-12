@@ -1,0 +1,192 @@
+{
+  "pbtResults": {
+    "2. Write preservation property tests (BEFORE implementing fix)": {
+      "status": "passed",
+      "lastRunTimestamp": 1794510328748
+    },
+    "1. Write bug condition exploration test": {
+      "status": "passed",
+      "failingExample": "All 4 bug condition sub-tests FAIL on unfixed code, confirming all 3 bugs exist:\n\nTest 1a (loadingKey mismatch):\n  actual:   \"64b64c0f1f2e3a4b5c6d7e90_64b64c0f1f2e3a4b5c6d7ea1\"\n  expected: \"64b64c0f1f2e3a4b5c6d7e90\"\n  Bug 1: compound key used instead of plain exam ID; spinner never activates in ExamsScreen.\n\nTest 1b (unpopulated cache write):\n  actual:   '[\"64abc001000000000000aaaa\",\"64abc002000000000000bbbb\"]' written to generalExamCacheKey\n  expected: generalExamCacheKey NOT written\n  Bug 2: bare ObjectId strings persisted to AsyncStorage when questions are unpopulated.\n\nTest 1c (unpopulated cache read):\n  actual:   setActiveExamSession called with questions=[\"64abc001000000000000aaaa\",\"64abc002000000000000bbbb\"] (bare strings)\n  expected: setActiveExamSession NOT called with bare-string questions\n  Bug 2+3: cached bare strings passed through to ExamActiveScreen, causing crash/blank render.\n\nTest 1d (final notice message):\n  actual:   \"Network offline and this exam is not cached yet. Connect once to download exams for offline practice.\"\n  expected: \"This exam is not available offline yet. Open it once while connected to cache it for offline practice.\"\n  Bug 4: non-actionable error message shown instead of guidance on what the user should do.",
+      "lastRunTimestamp": 1794510344403
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration test": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509727752
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509736644
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510364054
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing fix)": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509727947
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509742443
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510370076
+      }
+    ],
+    "3.1 Add `isPopulatedQuestion` helper function above `handleStartExam`": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509728113
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510376936
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510420234
+      }
+    ],
+    "3.2 Fix `loadingKey` to always equal `examItem._id`": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509728299
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510431758
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510477559
+      }
+    ],
+    "3.3 Guard `generalExamCacheKey` write with `isPopulatedQuestion` filter": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509728520
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510789182
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510837804
+      }
+    ],
+    "3.4 Guard `generalExamCacheKey` read with `isPopulatedQuestion` filter": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509728780
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510843899
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510918411
+      }
+    ],
+    "3.5 Update the final fallback error message": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509729236
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510924675
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510975962
+      }
+    ],
+    "3.6 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509729471
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510982190
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794511409964
+      }
+    ],
+    "3.7 Verify preservation tests still pass": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509729694
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794510988670
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794511418559
+      }
+    ],
+    "4. Checkpoint — Ensure all tests pass": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794509729920
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794511424780
+      },
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794511475393
+      }
+    ],
+    "3. Fix offline exam practice bugs in Mobile/App.js": [
+      {
+        "executionId": "d98534d9-056b-4c17-a8c7-9f11d0529d26",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794511418758
+      }
+    ]
+  }
+}

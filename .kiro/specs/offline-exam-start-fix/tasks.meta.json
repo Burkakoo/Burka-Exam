@@ -1,0 +1,151 @@
+{
+  "pbtResults": {
+    "1. Write bug condition exploration test": {
+      "status": "passed",
+      "failingExample": "All 4 tests failed on unfixed code, confirming the bugs exist:\n\n**1a — B2** (unpopulated cache write):\n  actual:   '[\"64abc001000000000000aaaa\",\"64abc002000000000000bbbb\"]'  (generalExamCacheKey WAS written with bare strings)\n  expected: undefined  (should NOT be written)\n  → Bare ObjectId strings were persisted to AsyncStorage\n\n**1b — B3** (unpopulated cache read):\n  actual:   true  (setActiveExamSession WAS called with bare-string questions)\n  expected: false (should NOT be called with bare strings)\n  → setActiveExamSession was called with questions: [\"64abc001000000000000aaaa\",\"64abc002000000000000bbbb\"]\n\n**1c — B4** (wrong error message):\n  actual:   \"Network offline and this exam is not cached yet. Connect once to download exams for offline practice.\"\n  expected: \"This exam is not available offline yet. Open it once while connected to cache it for offline practice.\"\n  → Network-state description shown instead of actionable guidance\n\n**1d — B5** (session cache key miss):\n  actual:   0  (setActiveExamSession was NOT called)\n  expected: 1  (should have found the chapter session via scan)\n  → Unfixed code only checks the exact _all key, misses @ethioprep_cached_exam_session_64b64c0f1f2e3a4b5c6d7e90_64b64c0f1f2e3a4b5c6d7ea1",
+      "lastRunTimestamp": 1794515551712
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration test": [
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514824414
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514831631
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515580288
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing fix)": [
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514824696
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514835942
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515584955
+      }
+    ],
+    "3.1 Guard `generalExamCacheKey` write with `isPopulatedQuestion` filter (B2)": [
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514824899
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515593712
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515635739
+      }
+    ],
+    "3.2 Guard `generalExamCacheKey` read with `isPopulatedQuestion` filter (B3)": [
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514825057
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515641624
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515663011
+      }
+    ],
+    "3.3 Update the final fallback error message to be actionable (B4)": [
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514825218
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515666826
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515671199
+      }
+    ],
+    "3.4 Add session cache key scan fallback for full-exam start (B5)": [
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514825458
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515676124
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515681566
+      }
+    ],
+    "3.5 Confirm loadingKey is always `examItem._id` (B1 — already fixed, verify stays correct)": [
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514825705
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515688645
+      },
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794515692811
+      }
+    ],
+    "3.6 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514825856
+      }
+    ],
+    "3.7 Verify preservation tests still pass": [
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514826073
+      }
+    ],
+    "4. Checkpoint — Ensure all tests pass": [
+      {
+        "executionId": "4a040a58-7afb-4a99-8dee-1a7cdfa8a3b7",
+        "chatSessionId": "sess_37128cae-d859-4956-b65a-db6b869d4b77",
+        "timestamp": 1794514826248
+      }
+    ]
+  }
+}
