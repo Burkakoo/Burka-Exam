@@ -1,32 +1,31 @@
 {
-    "version":  "0.1.0",
-    "name":  "burka-exam-mobile",
-    "main":  "expo/AppEntry.js",
-    "scripts":  {
-                    "ios":  "expo start --ios",
-                    "android":  "expo start --android",
-                    "start":  "expo start"
-                },
-    "expo":  {
-                 "install":  {
-                                 "exclude":  [
-                                                 "react-native"
-                                             ]
-                             }
-             },
-    "dependencies":  {
-                         "expo-clipboard":  "~58.0.4",
-                         "react":  "19.3.0",
-                         "react-native-safe-area-context":  "~5.11.1",
-                         "expo-status-bar":  "~58.0.4",
-                         "@expo/vector-icons":  "^15.0.2",
-                         "expo":  "~58.0.23",
-                         "expo-image-picker":  "~58.0.10",
-                         "react-native":  "0.88.0",
-                         "expo-asset":  "~58.0.20",
-                         "@react-native-async-storage/async-storage":  "2.2.0",
-                         "expo-font":  "~58.0.10"
-                     },
-    "private":  true
+  "version": "0.1.0",
+  "name": "burka-exam-mobile",
+  "main": "expo/AppEntry.js",
+  "scripts": {
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "start": "expo start"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "react-native"
+      ]
+    }
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~58.0.25",
+    "expo-asset": "~58.0.21",
+    "expo-clipboard": "~58.0.4",
+    "expo-font": "~58.0.12",
+    "expo-image-picker": "~58.0.10",
+    "expo-status-bar": "~58.0.5",
+    "react": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.11.1"
+  },
+  "private": true
 }
-
