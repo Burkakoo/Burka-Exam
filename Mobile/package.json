@@ -19,6 +19,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~58.0.25",
     "expo-asset": "~58.0.21",
+    "expo-build-properties": "~58.0.4",
     "expo-clipboard": "~58.0.4",
     "expo-font": "~58.0.12",
     "expo-image-picker": "~58.0.10",

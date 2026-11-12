@@ -10,7 +10,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "android": {
-      "versionCode": 16,
+      "versionCode": 17,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE"
@@ -28,6 +28,15 @@
         "projectId": "702754b6-355e-4638-b3d8-2315f2ec4526"
       }
     },
-    "plugins": []
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
+    ]
   }
 }
