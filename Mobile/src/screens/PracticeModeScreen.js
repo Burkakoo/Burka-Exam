@@ -339,7 +339,9 @@ export function PracticeModeScreen({
         try {
           const cacheKeys = [
             `@ethioprep_cached_practice_qs_${targetSubId}_${targetGrade}`,
+            `@ethioprep_cached_practice_qs_${targetSubId}_grade-${targetGrade}`,
             `@ethioprep_cached_practice_qs_${targetSubId}_all`,
+            targetExam?._id ? `@ethioprep_cached_exam_session_${targetExam._id}_all` : null,
             targetExam?._id ? `@ethioprep_exam_cache_${targetExam._id}` : null
           ].filter(Boolean);
 
@@ -347,9 +349,49 @@ export function PracticeModeScreen({
             const cached = await AsyncStorage.getItem(key);
             if (cached) {
               const parsed = JSON.parse(cached);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                qList = parsed;
+              const extracted = Array.isArray(parsed)
+                ? parsed
+                : Array.isArray(parsed?.exam?.questions)
+                ? parsed.exam.questions
+                : Array.isArray(parsed?.questions)
+                ? parsed.questions
+                : null;
+              if (extracted && extracted.length > 0) {
+                if (targetGrade !== "all") {
+                  const filtered = extracted.filter((q) => {
+                    const qG = String(q.gradeLevel || "").toLowerCase();
+                    return qG === `grade-${targetGrade}` || qG === String(targetGrade);
+                  });
+                  if (filtered.length > 0) {
+                    qList = filtered;
+                    break;
+                  }
+                }
+                qList = extracted;
                 break;
+              }
+            }
+          }
+
+          if (qList.length === 0 && Array.isArray(candidateExams)) {
+            for (const cand of candidateExams) {
+              if (!cand?._id) continue;
+              const candCached =
+                (await AsyncStorage.getItem(`@ethioprep_exam_cache_${cand._id}`)) ||
+                (await AsyncStorage.getItem(`@ethioprep_cached_exam_session_${cand._id}_all`));
+              if (candCached) {
+                const parsed = JSON.parse(candCached);
+                const extracted = Array.isArray(parsed)
+                  ? parsed
+                  : Array.isArray(parsed?.exam?.questions)
+                  ? parsed.exam.questions
+                  : Array.isArray(parsed?.questions)
+                  ? parsed.questions
+                  : null;
+                if (extracted && extracted.length > 0) {
+                  qList = extracted;
+                  break;
+                }
               }
             }
           }

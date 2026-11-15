@@ -1,4 +1,4 @@
-﻿import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useState } from "react";
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -7,6 +7,7 @@ import { Card } from "../components/Card.js";
 import { Input } from "../components/Input.js";
 import { EmptyState } from "../components/EmptyState.js";
 import { Icon } from "../components/Icon.js";
+import { Notice } from "../components/Notice.js";
 import { request } from "../services/api.js";
 import { COLORS, RADIUS, SHADOW, SPACING } from "../utils/theme.js";
 
@@ -46,7 +47,8 @@ export function SubjectScreen({
   onSaveNote,
   savingNote,
   user,
-  isPremium = false
+  isPremium = false,
+  notice
 }) {
   const [examViewMode, setExamViewMode] = useState("year"); // "year" | "chapter"
   const [selectedExamYearIndex, setSelectedExamYearIndex] = useState(0);
@@ -358,6 +360,8 @@ export function SubjectScreen({
         </View>
 
       </View>
+
+      <Notice message={notice?.message} type={notice?.type} />
 
       {/* Buttons used to display exam by Year and Chapters */}
       <View style={styles.displayModeContainer}>

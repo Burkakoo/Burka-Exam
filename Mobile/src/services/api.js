@@ -27,7 +27,8 @@ export function getFriendlyErrorMessage(error, defaultMessage = "An unexpected e
     lower.includes("timed out") ||
     lower.includes("timeout") ||
     lower.includes("socket hang up") ||
-    lower.includes("offline") ||
+    lower.includes("device is offline") ||
+    lower.includes("internet is offline") ||
     lower.includes("cleartext")
   ) {
     return "Unable to connect to the server. Please check your internet connection.";

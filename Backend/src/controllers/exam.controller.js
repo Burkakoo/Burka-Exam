@@ -5,6 +5,8 @@ import { ExamAttempt } from "../models/ExamAttempt.js";
 import { Question } from "../models/Question.js";
 import { Subscription } from "../models/Subscription.js";
 import { Subject } from "../models/Subject.js";
+import { Note } from "../models/Note.js";
+import { User } from "../models/User.js";
 
 function getDisciplineKey(subject) {
   if (!subject) return "";
@@ -153,7 +155,7 @@ export async function getOfflineExamBundle(request, response) {
     const reqSubjectId = request.query?.subjectId;
 
     const subjFilter = { isActive: true };
-    if (reqStream && ["natural", "social"].includes(reqStream)) {
+    if (reqStream && ["natural", "social"].includes(reqStream) && reqStream !== "all") {
       subjFilter.stream = { $in: [reqStream, "both"] };
     }
     if (reqSubjectId && mongoose.isValidObjectId(reqSubjectId)) {
@@ -165,18 +167,25 @@ export async function getOfflineExamBundle(request, response) {
       examFilter.subjectId = reqSubjectId;
     }
 
-    const [rawExams, allSubjects, allChapters] = await Promise.all([
+    const [rawExams, allSubjects, allChapters, allNotes] = await Promise.all([
       Exam.find(examFilter)
         .populate("subjectId", "name code stream gradeLevel")
         .sort({ examYear: -1, createdAt: -1 })
         .limit(100)
         .lean(),
       Subject.find(subjFilter).select("_id name code stream gradeLevel").lean(),
-      Chapter.find({ isActive: true }).select("_id title order subjectId").lean()
+      Chapter.find({ isActive: true }).select("_id title order subjectId").lean(),
+      Note.find({ status: { $ne: "deleted" }, isPublic: true })
+        .populate("subjectId", "name code stream gradeLevel")
+        .populate("chapterId", "title order subjectId")
+        .populate("uploadedBy", "displayName")
+        .sort({ updatedAt: -1 })
+        .limit(300)
+        .lean()
     ]);
 
     const allowedSubjectIds = new Set(allSubjects.map((s) => String(s._id)));
-    const publishedExams = reqStream && ["natural", "social"].includes(reqStream)
+    const publishedExams = reqStream && ["natural", "social"].includes(reqStream) && reqStream !== "all"
       ? rawExams.filter((e) => {
           const sId = e.subjectId?._id ? String(e.subjectId._id) : String(e.subjectId || "");
           return allowedSubjectIds.has(sId);
@@ -188,14 +197,19 @@ export async function getOfflineExamBundle(request, response) {
 
     const allExamQuestionIds = new Set();
     const questionExamMap = new Map();
+    const examIdsByQId = new Map();
+
     for (const exam of publishedExams) {
+      const eId = String(exam._id);
       const fullQIds = Array.isArray(exam.questionIds) ? exam.questionIds : [];
       fullQIds.forEach((qId, idx) => {
         const key = String(qId);
         allExamQuestionIds.add(key);
+        if (!examIdsByQId.has(key)) examIdsByQId.set(key, []);
+        examIdsByQId.get(key).push(eId);
         if (!questionExamMap.has(key)) {
           questionExamMap.set(key, {
-            examId: String(exam._id),
+            examId: eId,
             bookletOrder: idx,
             examYear: exam.examYear || 2016,
             subjectId: exam.subjectId?._id ? String(exam.subjectId._id) : String(exam.subjectId || "")
@@ -204,21 +218,41 @@ export async function getOfflineExamBundle(request, response) {
       });
     }
 
-    const questionsRaw = await Question.find({
-      _id: { $in: Array.from(allExamQuestionIds) },
-      isActive: true
-    }).lean();
+    const qObjIds = Array.from(allExamQuestionIds)
+      .filter((id) => mongoose.isValidObjectId(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
 
+    // Fetch questions in chunks of 400 ObjectIds to prevent socket buffer timeouts
+    const chunkSize = 400;
+    const questionsRaw = [];
+    for (let i = 0; i < qObjIds.length; i += chunkSize) {
+      const chunk = qObjIds.slice(i, i + chunkSize);
+      const batch = await Question.find({
+        _id: { $in: chunk },
+        isActive: true
+      }).lean();
+      questionsRaw.push(...batch);
+    }
+
+    // Group questions by exam to build accurate chapterBreakdowns in O(N)
+    const questionsByExamId = new Map();
     const questions = questionsRaw.map((q) => {
+      const qIdStr = String(q._id);
+      const relatedExamIds = examIdsByQId.get(qIdStr) || [];
+      for (const eId of relatedExamIds) {
+        if (!questionsByExamId.has(eId)) questionsByExamId.set(eId, []);
+        questionsByExamId.get(eId).push(q);
+      }
+
       const ch = q.chapterId ? chapterById.get(String(q.chapterId)) : null;
-      const meta = questionExamMap.get(String(q._id)) || {};
+      const meta = questionExamMap.get(qIdStr) || {};
       const chSubj = ch?.subjectId
         ? subjectById.get(String(ch.subjectId))
         : subjectById.get(String(q.subjectId || meta.subjectId || ""));
       const resolvedTopic = q.topic || ch?.title || "General Curriculum Topic";
       const parsedText = extractEmbeddedPassageAndStem(q.prompt || q.stem || "", q.passage || "");
       return {
-        _id: String(q._id),
+        _id: qIdStr,
         examId: meta.examId || "",
         bookletOrder: meta.bookletOrder ?? 99999,
         subjectId: String(q.subjectId || meta.subjectId || ""),
@@ -251,23 +285,64 @@ export async function getOfflineExamBundle(request, response) {
       };
     });
 
+    const examBreakdownMap = new Map();
+    for (const exam of publishedExams) {
+      const examQs = questionsByExamId.get(String(exam._id)) || [];
+      const chCountMap = new Map();
+      for (const q of examQs) {
+        const cId = q.chapterId ? String(q.chapterId) : "unknown";
+        chCountMap.set(cId, (chCountMap.get(cId) || 0) + 1);
+      }
+
+      const examSubj = typeof exam.subjectId === "object" && exam.subjectId ? exam.subjectId : subjectById.get(String(exam.subjectId));
+      const breakdown = Array.from(chCountMap.entries())
+        .map(([chId, count]) => {
+          const foundCh = chId !== "unknown" ? chapterById.get(chId) : null;
+          const chSubj = foundCh?.subjectId ? subjectById.get(String(foundCh.subjectId)) : examSubj;
+          const gradeLevel = chSubj?.gradeLevel || examSubj?.gradeLevel || "grade-12";
+          const subjectCode = chSubj?.code || examSubj?.code || "";
+          return {
+            chapterId: chId !== "unknown" ? chId : null,
+            id: chId !== "unknown" ? chId : null,
+            title: foundCh ? foundCh.title : "General Unit",
+            order: foundCh?.order ?? 999,
+            gradeLevel,
+            subjectCode,
+            questionCount: count
+          };
+        })
+        .sort((a, b) => {
+          const ga = GRADE_SORT_ORDER[a.gradeLevel] ?? 99;
+          const gb = GRADE_SORT_ORDER[b.gradeLevel] ?? 99;
+          if (ga !== gb) return ga - gb;
+          return a.order - b.order;
+        });
+
+      examBreakdownMap.set(String(exam._id), breakdown);
+    }
+
     return response.json({
       generatedAt: new Date().toISOString(),
       examCount: publishedExams.length,
       subjectCount: allSubjects.length,
       chapterCount: allChapters.length,
       questionCount: questions.length,
+      notesCount: (allNotes || []).length,
       subjects: allSubjects,
       chapters: allChapters,
+      notes: allNotes || [],
       exams: publishedExams.map((e) => ({
         _id: String(e._id),
         title: e.title,
         description: e.description,
         type: e.type,
+        accessLevel: e.accessLevel || "free",
         examYear: e.examYear,
         durationMinutes: e.durationMinutes,
         passingScore: e.passingScore,
         subjectId: e.subjectId,
+        chapterBreakdown: examBreakdownMap.get(String(e._id)) || [],
+        chapterIds: e.chapterIds || [],
         questionIds: (e.questionIds || []).map(String)
       })),
       questions
