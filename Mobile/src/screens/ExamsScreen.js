@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Button } from "../components/Button.js";
 import { Card } from "../components/Card.js";
@@ -112,7 +112,12 @@ export function ExamsScreen({
       if (disc && map.has(disc)) {
         const entry = map.get(disc);
         entry.exams.push(exam);
-        entry.totalQuestions += (exam.questionIds?.length || 0);
+        const qCount = Array.isArray(exam.questions)
+          ? exam.questions.length
+          : Array.isArray(exam.questionIds)
+          ? exam.questionIds.length
+          : 0;
+        entry.totalQuestions += qCount;
         entry.years.add(getYear(exam));
       }
     });

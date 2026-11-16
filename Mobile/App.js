@@ -1117,48 +1117,59 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-export default function App() {
+function AppContent() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     AsyncStorage.getItem("ethioprep_user")
       .then((val) => {
-        if (val) setUser(JSON.parse(val));
+        if (val) {
+          try {
+            setUser(JSON.parse(val));
+          } catch {
+            setUser(null);
+          }
+        }
       })
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
   function handleLogout() {
-    AsyncStorage.multiRemove(["ethioprep_token", "ethioprep_user"]).then(() => {
-      setUser(null);
-    });
+    AsyncStorage.multiRemove(["ethioprep_token", "ethioprep_user"])
+      .then(() => {
+        setUser(null);
+      })
+      .catch(() => setUser(null));
   }
 
   if (loading) {
     return (
-      <SafeAreaProvider>
-        <View style={styles.loadingContainer}>
-          <View style={styles.loadingLogo}>
-            <Text style={styles.loadingLogoText}>E</Text>
-          </View>
-          <Text style={styles.loadingBrand}>
-            Ethio<Text style={{ color: COLORS.primary }}>Prep</Text>
-          </Text>
-          <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.lg }} />
+      <View style={styles.loadingContainer}>
+        <View style={styles.loadingLogo}>
+          <Text style={styles.loadingLogoText}>B</Text>
         </View>
-      </SafeAreaProvider>
+        <Text style={styles.loadingBrand}>
+          Burka <Text style={{ color: COLORS.primary }}>Exam</Text>
+        </Text>
+        <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.lg }} />
+      </View>
     );
   }
 
+  return user ? (
+    <MainDashboard onLogout={handleLogout} user={user} />
+  ) : (
+    <AuthScreen onLoginSuccess={setUser} />
+  );
+}
+
+export default function App() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        {user ? (
-          <MainDashboard onLogout={handleLogout} user={user} />
-        ) : (
-          <AuthScreen onLoginSuccess={setUser} />
-        )}
+        <AppContent />
       </ErrorBoundary>
     </SafeAreaProvider>
   );

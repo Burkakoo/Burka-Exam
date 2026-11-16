@@ -312,7 +312,7 @@ export function SubjectScreen({
 
         <View style={styles.topBarTitleBox}>
           <Text numberOfLines={1} style={styles.topBarTitle}>
-            {subject.name}
+            {subject?.name || "Subject"}
           </Text>
         </View>
 
