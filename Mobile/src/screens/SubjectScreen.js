@@ -1,10 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useState } from "react";
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 import { Button } from "../components/Button.js";
 import { Card } from "../components/Card.js";
-import { Input } from "../components/Input.js";
 import { EmptyState } from "../components/EmptyState.js";
 import { Icon } from "../components/Icon.js";
 import { Notice } from "../components/Notice.js";
@@ -29,10 +35,26 @@ function getSubjectDiscipline(subj) {
   if (code.includes("GEOG") || name.includes("geog")) return "GEOG";
   if (code.includes("HIST") || name.includes("hist")) return "HIST";
   if (code.includes("ECON") || name.includes("econ")) return "ECON";
-  if (code.includes("APTITUDE") || name.includes("aptitude")) return "APTITUDE";
-  if (code.includes("SAT") || name.includes("sat")) return "SAT";
+  if (code.includes("APTITUDE") || name.includes("aptitude") || code.includes("SAT") || name.includes("sat")) return "SAT";
 
   return code.split("_")[0] || code;
+}
+
+const GRADE_BADGE_COLORS = {
+  "grade-12": "#1976D2", // Blue
+  "grade-11": "#E91E63", // Pink
+  "grade-10": "#FF9800", // Orange
+  "grade-9": "#00897B",  // Teal
+  "12": "#1976D2",
+  "11": "#E91E63",
+  "10": "#FF9800",
+  "9": "#00897B"
+};
+
+function getGradeNum(gradeLevel) {
+  if (!gradeLevel) return "12";
+  const match = String(gradeLevel).match(/\d+/);
+  return match ? match[0] : "12";
 }
 
 export function SubjectScreen({
@@ -44,19 +66,20 @@ export function SubjectScreen({
   onBack,
   onStartExam,
   onNavigatePayments,
-  onSaveNote,
-  savingNote,
   user,
   isPremium = false,
-  notice
+  notice,
+  progress = []
 }) {
-  const [examViewMode, setExamViewMode] = useState("year"); // "year" | "chapter"
-  const [selectedExamYearIndex, setSelectedExamYearIndex] = useState(0);
+  // Year tab state: "all" is default, or a specific year string like "2018", "2017", etc.
+  const [selectedYearTab, setSelectedYearTab] = useState("all");
   const [subjectChapters, setSubjectChapters] = useState([]);
+  const [notesExpanded, setNotesExpanded] = useState(false);
 
   const curDiscipline = getSubjectDiscipline(subject);
   const curSubjId = String(subject?._id || subject?.id || "");
 
+  // All subjects in this discipline (Grades 9–12)
   const disciplineSubjects = useMemo(() => {
     const matched = (subjects || []).filter((s) => {
       if (String(s._id || s.id) === curSubjId) return true;
@@ -66,6 +89,7 @@ export function SubjectScreen({
     return matched;
   }, [subjects, curSubjId, curDiscipline, subject]);
 
+  // Load chapters for all subjects in this discipline
   useEffect(() => {
     let active = true;
     async function loadDisciplineChapters() {
@@ -80,7 +104,7 @@ export function SubjectScreen({
               const res = await request(`/question-bank/subjects/${sId}/chapters`);
               const chs = Array.isArray(res?.chapters) ? res.chapters : [];
               if (chs.length > 0) {
-                AsyncStorage.setItem(cacheKey, JSON.stringify(chs)).catch(() => { });
+                AsyncStorage.setItem(cacheKey, JSON.stringify(chs)).catch(() => {});
               }
               return chs.map((c) => ({
                 ...c,
@@ -98,7 +122,7 @@ export function SubjectScreen({
                     subjectCode: subj.code || ""
                   }));
                 }
-              } catch { }
+              } catch {}
               return [];
             }
           })
@@ -106,7 +130,7 @@ export function SubjectScreen({
         if (active) {
           setSubjectChapters(results.flat());
         }
-      } catch { }
+      } catch {}
     }
     loadDisciplineChapters();
     return () => {
@@ -114,6 +138,7 @@ export function SubjectScreen({
     };
   }, [disciplineSubjects]);
 
+  // Filter exams that belong to this subject / discipline
   const subjectExams = useMemo(() => {
     return exams.filter((exam) => {
       const examSubj = exam.subjectId;
@@ -137,1318 +162,889 @@ export function SubjectScreen({
         if (curDiscipline === "GEOG" && (title.includes("geography") || title.includes("geog"))) return true;
         if (curDiscipline === "HIST" && (title.includes("history") || title.includes("hist"))) return true;
         if (curDiscipline === "ECON" && (title.includes("economics") || title.includes("econ"))) return true;
+        if (curDiscipline === "SAT" && (title.includes("aptitude") || title.includes("sat"))) return true;
       }
 
       return false;
     });
   }, [exams, curSubjId, curDiscipline, subjects]);
 
-  const years = useMemo(() => {
-    return [...subjectExams].sort((a, b) =>
-      getYear(b).localeCompare(getYear(a), undefined, { numeric: true })
-    );
+  // Sorted exam years
+  const sortedExams = useMemo(() => {
+    return [...subjectExams].sort((a, b) => {
+      const yA = Number(getYear(a)) || 0;
+      const yB = Number(getYear(b)) || 0;
+      return yB - yA;
+    });
   }, [subjectExams]);
 
-  const activeExam = years[selectedExamYearIndex] || years[0] || null;
-  const activeYear = activeExam ? getYear(activeExam) : "";
-  const activeExamChapters = useMemo(() => {
-    if (!activeExam) return [];
-    if (Array.isArray(activeExam.chapterBreakdown) && activeExam.chapterBreakdown.length > 0) {
-      return activeExam.chapterBreakdown;
-    }
-    if (Array.isArray(activeExam.chapterIds)) {
-      return activeExam.chapterIds.map((ch, idx) => ({
-        chapterId: typeof ch === "object" ? String(ch._id || ch.id) : String(ch),
-        title: typeof ch === "object" ? ch.title : `Unit ${idx + 1}`,
-        order: typeof ch === "object" ? ch.order ?? idx + 1 : idx + 1,
-        questionCount: null
-      }));
-    }
-    return [];
-  }, [activeExam]);
+  // Distinct available year tabs: ["all", "2018", "2017", "2016", "2015", "2014", "2013"]
+  const yearTabs = useMemo(() => {
+    const yearsSet = new Set();
+    sortedExams.forEach((e) => {
+      const y = getYear(e);
+      if (y && y !== "Practice") yearsSet.add(y);
+    });
+    const sorted = Array.from(yearsSet).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    return ["all", ...sorted];
+  }, [sortedExams]);
 
-  // Subject-specific notes (Official + Personal)
+  // Total questions in all available exams for this subject
+  const totalCombinedQuestions = useMemo(() => {
+    return sortedExams.reduce((sum, e) => sum + (e.questionIds?.length || 0), 0);
+  }, [sortedExams]);
+
+  // Current active exam when a specific year tab is selected
+  const activeYearExam = useMemo(() => {
+    if (selectedYearTab === "all") return sortedExams[0] || null;
+    return sortedExams.find((e) => getYear(e) === selectedYearTab) || sortedExams[0] || null;
+  }, [sortedExams, selectedYearTab]);
+
+  // Deduplicated curriculum chapters across Grades 9–12
+  const allCurriculumChapters = useMemo(() => {
+    if (subjectChapters && subjectChapters.length > 0) {
+      return [...subjectChapters].sort((a, b) => {
+        const gradeOrder = { "grade-12": 12, "grade-11": 11, "grade-10": 10, "grade-9": 9 };
+        const gA = gradeOrder[a.gradeLevel] ?? 12;
+        const gB = gradeOrder[b.gradeLevel] ?? 12;
+        if (gA !== gB) return gB - gA; // Grade 12 down to Grade 9
+        return (a.order ?? 999) - (b.order ?? 999);
+      });
+    }
+
+    const list = [];
+    const seenIds = new Set();
+
+    subjectExams.forEach((exam) => {
+      if (Array.isArray(exam.chapterBreakdown)) {
+        exam.chapterBreakdown.forEach((b) => {
+          if (b.chapterId && !seenIds.has(String(b.chapterId))) {
+            seenIds.add(String(b.chapterId));
+            list.push({
+              _id: b.chapterId,
+              title: b.title,
+              order: b.order,
+              gradeLevel: b.gradeLevel || "grade-12"
+            });
+          }
+        });
+      }
+    });
+
+    return list.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  }, [subjectChapters, subjectExams]);
+
+  // Group chapters sequentially: Grade 12, Grade 11, Grade 10, Grade 9
+  const chaptersByGrade = useMemo(() => {
+    const groups = [
+      { key: "grade-12", gradeNum: "12", label: "Grade 12", color: GRADE_BADGE_COLORS["grade-12"], items: [] },
+      { key: "grade-11", gradeNum: "11", label: "Grade 11", color: GRADE_BADGE_COLORS["grade-11"], items: [] },
+      { key: "grade-10", gradeNum: "10", label: "Grade 10", color: GRADE_BADGE_COLORS["grade-10"], items: [] },
+      { key: "grade-9", gradeNum: "9", label: "Grade 9", color: GRADE_BADGE_COLORS["grade-9"], items: [] }
+    ];
+
+    allCurriculumChapters.forEach((ch) => {
+      const gNum = getGradeNum(ch.gradeLevel);
+      const target = groups.find((g) => g.gradeNum === gNum) || groups[0];
+      target.items.push(ch);
+    });
+
+    return groups.filter((g) => g.items.length > 0);
+  }, [allCurriculumChapters]);
+
+  // Get question count for a chapter within the active exam year
+  function getChapterQuestionCount(chId, chTitle, exam) {
+    if (!exam) return 0;
+    if (Array.isArray(exam.chapterBreakdown)) {
+      const found = exam.chapterBreakdown.find((b) => {
+        if (String(b.chapterId) === String(chId)) return true;
+        if (chTitle && b.title) {
+          const cleanA = chTitle.toLowerCase().replace(/^(chapter|unit)\s*\d+:\s*/i, "").trim();
+          const cleanB = b.title.toLowerCase().replace(/^(chapter|unit)\s*\d+:\s*/i, "").replace(/\(grade\s*\d+\)/i, "").trim();
+          if (cleanA && cleanB && (cleanA.includes(cleanB) || cleanB.includes(cleanA))) return true;
+        }
+        return false;
+      });
+      if (found) return found.questionCount ?? 0;
+    }
+    return 0;
+  }
+
+  // Find progress for an exam or chapter
+  function getProgressForContent(contentId) {
+    if (!Array.isArray(progress) || progress.length === 0) return { percent: 0, lastPracticed: null };
+    const record = progress.find(
+      (p) => String(p.contentId) === String(contentId) || String(p.chapterId) === String(contentId)
+    );
+    if (!record) return { percent: 0, lastPracticed: null };
+    const pct = record.percentage ?? record.score ?? 0;
+    const date = record.updatedAt
+      ? new Date(record.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      : null;
+    return { percent: Math.round(pct), lastPracticed: date };
+  }
+
+  // Subject notes
   const subjectNotes = useMemo(() => {
     return notes.filter((n) => {
       const sId = String(n.subjectId?._id || n.subjectId || "");
       if (curSubjId && sId === curSubjId) return true;
-
       const nSubj = n.subjectId;
       if (curDiscipline && nSubj) {
         const nDiscipline = getSubjectDiscipline(typeof nSubj === "object" ? nSubj : null);
         if (nDiscipline && nDiscipline === curDiscipline) return true;
       }
       return false;
-    }).sort((a, b) => {
-      const orderA = a.chapterId?.order ?? 999;
-      const orderB = b.chapterId?.order ?? 999;
-      return orderA - orderB;
     });
   }, [notes, curSubjId, curDiscipline]);
 
-  // Extract all curriculum chapters from fetched API, exams, and notes
-  const allSubjectChapters = useMemo(() => {
-    if (subjectChapters && subjectChapters.length > 0) {
-      return [...subjectChapters].sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-    }
-
-    const list = [];
-    const seenIds = new Set();
-
-    // Extract from exams
-    subjectExams.forEach((exam) => {
-      if (Array.isArray(exam.chapterBreakdown)) {
-        exam.chapterBreakdown.forEach((b) => {
-          if (b.chapterId && !seenIds.has(String(b.chapterId))) {
-            seenIds.add(String(b.chapterId));
-            list.push({ _id: b.chapterId, title: b.title, order: b.order });
-          }
-        });
-      } else if (Array.isArray(exam.chapterIds)) {
-        exam.chapterIds.forEach((ch) => {
-          if (ch && typeof ch === "object") {
-            const chId = String(ch._id || ch.id);
-            if (!seenIds.has(chId)) {
-              seenIds.add(chId);
-              list.push(ch);
-            }
-          }
-        });
-      }
-    });
-
-    // Extract from notes
-    subjectNotes.forEach((n) => {
-      if (n.chapterId && typeof n.chapterId === "object") {
-        const chId = String(n.chapterId._id || n.chapterId.id);
-        if (!seenIds.has(chId)) {
-          seenIds.add(chId);
-          list.push(n.chapterId);
-        }
-      }
-    });
-
-    return list.sort((a, b) => {
-      const gradeOrder = { "grade-9": 9, "grade-10": 10, "grade-11": 11, "grade-12": 12 };
-      const gA = gradeOrder[a.gradeLevel] ?? 12;
-      const gB = gradeOrder[b.gradeLevel] ?? 12;
-      if (gA !== gB) return gA - gB;
-      return (a.order ?? 999) - (b.order ?? 999);
-    });
-  }, [subjectChapters, subjectExams, subjectNotes]);
-
-  function formatGradeBadge(gradeLevel) {
-    if (!gradeLevel) return "Grade 12";
-    return String(gradeLevel).replace("grade-", "Grade ");
-  }
-
-  const chaptersByGrade = useMemo(() => {
-    const groups = [
-      { key: "grade-9", label: "Grade 9", items: [] },
-      { key: "grade-10", label: "Grade 10", items: [] },
-      { key: "grade-11", label: "Grade 11", items: [] },
-      { key: "grade-12", label: "Grade 12", items: [] }
-    ];
-    allSubjectChapters.forEach((ch) => {
-      const gKey = ch.gradeLevel || "grade-12";
-      const target = groups.find((g) => g.key === gKey) || groups[3];
-      target.items.push(ch);
-    });
-    return groups.filter((g) => g.items.length > 0);
-  }, [allSubjectChapters]);
-
-  function getExamBreakdownForChapter(chId, chTitle) {
-    const matches = [];
-    subjectExams.forEach((exam) => {
-      const yr = getYear(exam);
-      if (Array.isArray(exam.chapterBreakdown) && exam.chapterBreakdown.length > 0) {
-        const found = exam.chapterBreakdown.find((b) => {
-          if (String(b.chapterId) === String(chId)) return true;
-          if (chTitle && b.title) {
-            const cleanA = chTitle.toLowerCase().replace(/^(chapter|unit)\s*\d+:\s*/i, "").trim();
-            const cleanB = b.title.toLowerCase().replace(/^(chapter|unit)\s*\d+:\s*/i, "").replace(/\(grade\s*\d+\)/i, "").trim();
-            if (cleanA && cleanB && (cleanA.includes(cleanB) || cleanB.includes(cleanA))) return true;
-          }
-          return false;
-        });
-        if (found) {
-          matches.push({
-            exam,
-            year: yr,
-            chapterId: found.chapterId || chId,
-            questionCount: found.questionCount
-          });
-        }
-      } else if (Array.isArray(exam.chapterIds) && exam.chapterIds.length > 0) {
-        const hasCh = exam.chapterIds.some((c) => {
-          const id = typeof c === "object" ? String(c._id || c.id) : String(c);
-          return id === String(chId);
-        });
-        if (hasCh) {
-          matches.push({
-            exam,
-            year: yr,
-            chapterId: chId,
-            questionCount: null
-          });
-        }
-      }
-    });
-    return matches;
-  }
-
-  const officialNotes = subjectNotes.filter((n) => n.isPublic !== false);
-  const personalNotes = subjectNotes.filter(
-    (n) => !n.isPublic && n.userId === (user?._id || user?.id)
-  );
-
-  const [showNotes, setShowNotes] = useState(false);
-  const [selectedNote, setSelectedNote] = useState(null);
-  const [showPersonalForm, setShowPersonalForm] = useState(false);
-  const [personalTitle, setPersonalTitle] = useState("");
-  const [personalBody, setPersonalBody] = useState("");
-  const [personalError, setPersonalError] = useState("");
-
-
-
-  async function handleCreatePersonalNote() {
-    setPersonalError("");
-    if (!personalTitle.trim() || !personalBody.trim()) {
-      setPersonalError("Please provide both title and content for your note.");
-      return;
-    }
-    if (!onSaveNote) return;
-
-    try {
-      await onSaveNote({
-        title: personalTitle.trim(),
-        body: personalBody.trim(),
-        subjectId: subject._id,
-        isPublic: false
-      });
-      setPersonalTitle("");
-      setPersonalBody("");
-      setShowPersonalForm(false);
-    } catch (err) {
-      setPersonalError(err.message || "Failed to save note.");
-    }
-  }
-
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={true}
-      style={styles.scrollWrapper}
-    >
-      <TouchableOpacity
-        accessibilityLabel="Back to subjects"
-        onPress={onBack}
-        style={styles.back}
-      >
-        <Icon color={COLORS.primaryDark} name="arrow-back" size={16} />
-        <Text style={styles.backText}>Back to Subjects</Text>
-      </TouchableOpacity>
+    <View style={styles.screenWrapper}>
+      {/* ── TOP TEAL APP BAR (Matches Screenshots 2, 3, 4) ── */}
+      <View style={styles.topTealBar}>
+        <TouchableOpacity
+          accessibilityLabel="Back to subjects"
+          onPress={onBack}
+          style={styles.backButton}
+        >
+          <Icon color="#FFFFFF" name="arrow-back" size={24} />
+        </TouchableOpacity>
 
-      <View style={styles.headingRow}>
-        <View style={styles.titleContainer}>
-          <Text style={styles.title}>{subject.name}</Text>
-          <Text style={styles.subtitle}>
-            {formatGradeBadge(subject.gradeLevel)} ·{" "}
-            {subject.stream === "social" ? "Social Science" : "Natural Science"}
+        <View style={styles.topBarTitleBox}>
+          <Text numberOfLines={1} style={styles.topBarTitle}>
+            {subject.name}
           </Text>
         </View>
 
+        <View style={styles.topBarRightIcons}>
+          <Icon color="#FFFFFF" name="search-outline" size={20} />
+        </View>
       </View>
 
-      <Notice message={notice?.message} type={notice?.type} />
-
-      {/* Buttons used to display exam by Year and Chapters */}
-      <View style={styles.displayModeContainer}>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => setExamViewMode("year")}
-          style={[
-            styles.displayModeBtn,
-            examViewMode === "year" && styles.displayModeBtnActive
-          ]}
+      {/* ── HORIZONTAL YEAR TABS (Matches Screenshots 2, 3, 4) ── */}
+      <View style={styles.yearTabsContainer}>
+        <ScrollView
+          contentContainerStyle={styles.yearTabsScroll}
+          horizontal
+          showsHorizontalScrollIndicator={false}
         >
-          <Icon
-            color={examViewMode === "year" ? COLORS.onPrimary : COLORS.primary}
-            name="calendar"
-            size={16}
-          />
-          <Text
-            style={[
-              styles.displayModeBtnText,
-              examViewMode === "year" && styles.displayModeBtnTextActive
-            ]}
-          >
-            By Year ({years.length})
-          </Text>
-        </TouchableOpacity>
+          {yearTabs.map((y) => {
+            const isTabActive = selectedYearTab === y;
+            const label = y === "all" ? "All" : y;
 
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => setExamViewMode("chapter")}
-          style={[
-            styles.displayModeBtn,
-            examViewMode === "chapter" && styles.displayModeBtnActive
-          ]}
-        >
-          <Icon
-            color={examViewMode === "chapter" ? COLORS.onPrimary : COLORS.primary}
-            name="layers-outline"
-            size={16}
-          />
-          <Text
-            style={[
-              styles.displayModeBtnText,
-              examViewMode === "chapter" && styles.displayModeBtnTextActive
-            ]}
-          >
-            By Chapter ({allSubjectChapters.length})
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── EXAM YEARS VIEW: Choose Year -> Choose Chapter ── */}
-      {examViewMode === "year" && (
-        <View>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Select Exam Year</Text>
-            <View style={styles.countPill}>
-              <Text style={styles.countText}>{years.length}</Text>
-            </View>
-          </View>
-
-          {years.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <EmptyState
-                icon="calendar-outline"
-                message="Past papers for this subject will appear here. You can explore the Study Notes below."
-                title="No exam years yet"
-              />
-            </View>
-          ) : (
-            <View>
-              {/* Year Selector Tabs */}
-              <ScrollView
-                contentContainerStyle={styles.yearTabsScroll}
-                horizontal
-                showsHorizontalScrollIndicator={false}
+            return (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                key={y}
+                onPress={() => setSelectedYearTab(y)}
+                style={[styles.yearTabItem, isTabActive && styles.yearTabItemActive]}
               >
-                {years.map((exam, idx) => {
-                  const y = getYear(exam);
-                  const isActive = selectedExamYearIndex === idx;
-                  const qCount = exam.questionIds?.length || 0;
-                  return (
-                    <TouchableOpacity
-                      key={exam._id}
-                      onPress={() => setSelectedExamYearIndex(idx)}
-                      style={[styles.yearTab, isActive && styles.yearTabActive]}
-                    >
-                      <Icon
-                        color={isActive ? COLORS.primaryDark : COLORS.textMuted}
-                        name="calendar-outline"
-                        size={16}
-                      />
-                      <Text style={[styles.yearTabText, isActive && styles.yearTabTextActive]}>
-                        {y} Exam
-                      </Text>
-                      <View style={[styles.yearTabBadge, isActive && styles.yearTabBadgeActive]}>
-                        <Text style={[styles.yearTabBadgeText, isActive && styles.yearTabBadgeTextActive]}>
-                          {qCount} Qs
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                <Text
+                  style={[
+                    styles.yearTabText,
+                    isTabActive && styles.yearTabTextActive
+                  ]}
+                >
+                  {label}
+                </Text>
+                {isTabActive && <View style={styles.yearTabUnderline} />}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-              {activeExam && (
-                <View style={styles.selectedExamContainer}>
-                  {/* Active Exam Overview Banner */}
-                  <Card style={styles.selectedExamBanner}>
-                    <View style={styles.selectedExamTopRow}>
-                      <View style={styles.selectedExamInfo}>
-                        <Text style={styles.selectedExamTitle}>{activeExam.title}</Text>
-                        <Text style={styles.selectedExamSub}>
-                          Year: {activeYear} · {activeExam.questionIds?.length || 0} Questions · {activeExam.durationMinutes} min
-                        </Text>
-                      </View>
-                      <View style={styles.accessPill}>
-                        <Text style={styles.accessText}>
-                          {activeExam.accessLevel === "premium" ? "Premium" : "Free"}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* Option to start full exam */}
-                    <Button
-                      icon={activeExam.accessLevel === "premium" && !isPremium ? "lock-closed" : undefined}
-                      loading={loadingExamId === activeExam._id}
-                      onPress={() => activeExam.accessLevel === "premium" && !isPremium && onNavigatePayments ? onNavigatePayments() : onStartExam(activeExam)}
-                      style={styles.fullExamBtn}
-                      variant={activeExam.accessLevel === "premium" && !isPremium ? "secondary" : "outline"}
-                    >
-                      {activeExam.accessLevel === "premium" && !isPremium
-                        ? `Unlock Practice (${activeExam.questionIds?.length || 0} Qs)`
-                        : `Practice Full ${activeYear} Exam (${activeExam.questionIds?.length || 0} Qs)`}
-                    </Button>
-
-                    {activeExam.accessLevel === "premium" && !isPremium && (
-                      <View style={styles.premiumBannerRow}>
-                        <Icon color={COLORS.primaryDark} name="lock-closed" size={13} />
-                        <Text style={styles.premiumBannerText}>
-                          Official ESSLCE national exam ({activeExam.questionIds?.length || 0} Questions & Explanations).
-                        </Text>
-                        {onNavigatePayments && (
-                          <TouchableOpacity onPress={onNavigatePayments} style={styles.upgradeLink}>
-                            <Text style={styles.upgradeLinkText}>Subscribe</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    )}
-                  </Card>
-
-                  {/* Section: One Chapter in This Year at Once */}
-                  <View style={styles.chapterSectionHeader}>
-                    <Icon color={COLORS.primary} name="layers-outline" size={18} />
-                    <Text style={styles.unitSectionHeading}>
-                      Chapters in {activeYear} Exam:
-                    </Text>
-                  </View>
-                  <Text style={styles.unitSectionSub}>
-                    Tap a chapter below to practice questions from that one chapter in {activeYear} at once:
-                  </Text>
-
-                  {activeExamChapters.length === 0 ? (
-                    <Card style={styles.chapterCard}>
-                      <Text style={styles.chapterTitle}>All Questions</Text>
-                      <Text style={styles.chapterDesc}>
-                        This exam covers the complete {subject.name} curriculum.
-                      </Text>
-                      <Button
-                        loading={loadingExamId === activeExam._id}
-                        onPress={() => onStartExam(activeExam)}
-                        variant="primary"
-                      >
-                        Start {activeYear} Practice
-                      </Button>
-                    </Card>
-                  ) : (
-                    activeExamChapters.map((ch, idx) => {
-                      const isChLoading = loadingExamId === `${activeExam._id}_${ch.chapterId}`;
-                      const orderNum = ch.order ?? idx + 1;
-                      const unitMatch = String(ch.title || "").match(/^(?:Unit|Chapter)\s*(\d+)/i);
-                      const unitLabel = unitMatch ? `Unit ${unitMatch[1]}` : (orderNum > 50 ? `Unit ${idx + 1}` : `Unit ${orderNum}`);
-                      return (
-                        <Card key={ch.chapterId || idx} style={styles.chapterCard}>
-                          <View style={styles.chapterCardHeader}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                              <View style={styles.chapterOrderBadge}>
-                                <Text style={styles.chapterOrderBadgeText}>
-                                  {unitLabel}
-                                </Text>
-                              </View>
-                              {ch.gradeLevel ? (
-                                <View style={styles.chapterOrderBadge}>
-                                  <Text style={styles.chapterOrderBadgeText}>
-                                    {formatGradeBadge(ch.gradeLevel)}
-                                  </Text>
-                                </View>
-                              ) : null}
-                            </View>
-                            <View style={styles.chapterCountPill}>
-                              <Icon color={COLORS.primaryDark} name="help-circle-outline" size={13} />
-                              <Text style={styles.chapterCountPillText}>
-                                {ch.questionCount !== null ? `${ch.questionCount} Questions` : "Chapter Questions"}
-                              </Text>
-                            </View>
-                          </View>
-
-                          <Text style={styles.chapterTitle}>{ch.title}</Text>
-
-                          <View style={styles.chapterActionRow}>
-                            <Text style={styles.chapterYearContext}>
-                              From {activeYear} Exam Booklet
-                            </Text>
-                            <TouchableOpacity
-                              activeOpacity={0.8}
-                              disabled={isChLoading}
-                              onPress={() => activeExam.accessLevel === "premium" && !isPremium && onNavigatePayments ? onNavigatePayments() : onStartExam(activeExam, { chapterId: ch.chapterId })}
-                              style={styles.chapterStartBtn}
-                            >
-                              <Icon color={COLORS.onPrimary} name={activeExam.accessLevel === "premium" && !isPremium ? "lock-closed" : "play"} size={13} />
-                              <Text style={styles.chapterStartBtnText}>
-                                {isChLoading
-                                  ? "Opening..."
-                                  : activeExam.accessLevel === "premium" && !isPremium
-                                    ? "Unlock"
-                                    : `Practise ${ch.questionCount ? `(${ch.questionCount} Qs)` : "Unit"}`}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </Card>
-                      );
-                    })
-                  )}
-                </View>
-              )}
-            </View>
-          )}
+      {/* ── NOTICE MESSAGE BANNER ── */}
+      {notice && (
+        <View style={{ paddingHorizontal: SPACING.md, paddingTop: SPACING.xs }}>
+          <Notice message={notice?.message} type={notice?.type} />
         </View>
       )}
 
-      {/* ── CHAPTERS VIEW: Browse Units -> Choose Year ── */}
-      {examViewMode === "chapter" && (
-        <View style={styles.chapterSection}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Chapters & Units</Text>
-            <View style={styles.countPill}>
-              <Text style={styles.countText}>{allSubjectChapters.length}</Text>
-            </View>
-          </View>
-          <Text style={styles.unitSectionSub}>
-            Select a unit and choose the exam year to practice its questions:
-          </Text>
-
-          {allSubjectChapters.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <EmptyState
-                icon="layers-outline"
-                message="Curriculum units for this subject are being prepared. You can practise past exam papers in the 'By Year' tab above."
-                title="No chapters yet"
-              />
-            </View>
-          ) : (
-            chaptersByGrade.map((group) => (
-              <View key={group.key} style={{ marginBottom: SPACING.md }}>
-                <View style={[styles.sectionHeaderRow, { marginTop: SPACING.sm, marginBottom: SPACING.xs }]}>
-                  <Text style={styles.sectionTitle}>{group.label} Curriculum</Text>
-                  <View style={styles.countPill}>
-                    <Text style={styles.countText}>{group.items.length} Units</Text>
-                  </View>
+      {/* ── MAIN CONTENT AREA ── */}
+      <ScrollView
+        contentContainerStyle={styles.mainScrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={true}
+      >
+        {/* ════════════════════════════════════════════════════════════════
+            MODE A: "ALL" TAB SELECTED (Matches Screenshot 4)
+           ════════════════════════════════════════════════════════════════ */}
+        {selectedYearTab === "all" ? (
+          <View style={styles.allTabContent}>
+            {/* 1. Combined Practice Exam Card */}
+            {sortedExams.length > 0 && (
+              <Card style={styles.combinedCard}>
+                <View style={styles.combinedTopBanner}>
+                  <Text style={styles.combinedBannerTitle}>Combined Practice Exam</Text>
+                  <Icon color="#FFFFFF" name="pin" size={16} />
                 </View>
-                {group.items.map((ch, idx) => {
-                  const chId = String(ch._id || ch.id || idx);
-                  const chapterYearMatches = getExamBreakdownForChapter(chId, ch.title);
-                  const orderNum = ch.order || idx + 1;
-                  const unitMatch = String(ch.title || "").match(/^(?:Unit|Chapter)\s*(\d+)/i);
-                  const unitLabel = unitMatch ? `Unit ${unitMatch[1]}` : (orderNum > 50 ? `Unit ${idx + 1}` : `Unit ${orderNum}`);
+                <View style={styles.combinedCardBody}>
+                  <View style={styles.combinedTextRow}>
+                    <Text style={styles.combinedMainHeading}>All Available Past Questions</Text>
+                    <Text style={styles.combinedSubHeading}>
+                      {totalCombinedQuestions} total questions across {sortedExams.length} national examination papers.
+                    </Text>
+                  </View>
+                  <Button
+                    loading={loadingExamId === `${sortedExams[0]?._id}_all`}
+                    onPress={() => onStartExam && onStartExam(sortedExams[0], { allYears: true })}
+                    style={styles.combinedStartBtn}
+                    variant="primary"
+                  >
+                    Practice All Questions ({totalCombinedQuestions} Qs)
+                  </Button>
+                </View>
+              </Card>
+            )}
 
-                  return (
-                    <Card key={chId} style={styles.chapterCard}>
-                      <View style={styles.chapterCardHeader}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <View style={styles.chapterOrderBadge}>
-                            <Text style={styles.chapterOrderBadgeText}>
-                              {unitLabel}
-                            </Text>
-                          </View>
-                          <View style={styles.chapterOrderBadge}>
-                            <Text style={styles.chapterOrderBadgeText}>
-                              {group.label}
-                            </Text>
-                          </View>
+            {/* 2. Individual Examination Year Cards (Matches Screenshot 4) */}
+            {sortedExams.map((exam) => {
+              const y = getYear(exam);
+              const isLocked = exam.accessLevel === "premium" && !isPremium;
+              const { percent, lastPracticed } = getProgressForContent(exam._id);
+              const qCount = exam.questionIds?.length || 0;
+              const durationText = exam.durationMinutes
+                ? `${Math.floor(exam.durationMinutes / 60)}:${String(exam.durationMinutes % 60).padStart(2, "0")} hrs`
+                : "2:00 hrs";
+
+              return (
+                <View key={exam._id} style={styles.yearExamCard}>
+                  {/* Card Header Bar (Teal #00796B with Pin Icon) */}
+                  <View style={styles.yearExamCardHeader}>
+                    <Text style={styles.yearExamCardHeaderText}>
+                      {y}
+                    </Text>
+                    <Icon color="#FFFFFF" name="pin" size={15} />
+                  </View>
+
+                  {/* Card Body */}
+                  {isLocked ? (
+                    /* LOCKED CARD (Matches Screenshot 4) */
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => onNavigatePayments && onNavigatePayments()}
+                      style={styles.lockedCardBody}
+                    >
+                      <View style={styles.lockedIconWrapper}>
+                        <Icon color="#F59E0B" name="lock-closed" size={54} />
+                      </View>
+                      <Text style={styles.lockedHintText}>
+                        Premium examination. Tap to unlock all past papers.
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    /* UNLOCKED CARD WITH PROGRESS RING & INFO (Matches Screenshot 4) */
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={() => onStartExam && onStartExam(exam)}
+                      style={styles.unlockedCardBody}
+                    >
+                      {/* Circular Progress Ring */}
+                      <View style={styles.progressCircleContainer}>
+                        <View style={styles.progressCircleRing}>
+                          <Text style={styles.progressCircleNumber}>
+                            {percent}
+                            <Text style={styles.progressCirclePercent}>%</Text>
+                          </Text>
                         </View>
-                        <Text style={styles.chapterExamCountText}>
-                          {chapterYearMatches.length} {chapterYearMatches.length === 1 ? "Year" : "Years"} Available
-                        </Text>
                       </View>
 
-                      <Text style={styles.chapterTitle}>{ch.title}</Text>
-                      {ch.description ? (
-                        <Text numberOfLines={2} style={styles.chapterDesc}>
-                          {ch.description}
-                        </Text>
-                      ) : null}
+                      {/* Info Table Rows */}
+                      <View style={styles.cardInfoTable}>
+                        <View style={styles.cardInfoRow}>
+                          <Text style={styles.cardInfoLabel}>Total Questions:</Text>
+                          <Text style={styles.cardInfoValue}>{qCount} Questions</Text>
+                        </View>
 
-                      {chapterYearMatches.length > 0 ? (
-                        <View style={styles.chapterYearsList}>
-                          {chapterYearMatches.map((match) => {
-                            const isMatchLoading = loadingExamId === `${match.exam._id}_${chId}`;
+                        <View style={styles.cardInfoRow}>
+                          <Text style={styles.cardInfoLabel}>Given Time:</Text>
+                          <Text style={styles.cardInfoValue}>{durationText}</Text>
+                        </View>
+
+                        <View style={styles.cardInfoRow}>
+                          <Text style={styles.cardInfoLabel}>Last Practiced:</Text>
+                          <Text style={styles.cardInfoValue}>{lastPracticed || "Not practiced yet"}</Text>
+                        </View>
+
+                        <View style={styles.cardInfoRow}>
+                          <Text style={styles.cardInfoLabel}>Exam Year:</Text>
+                          <Text style={styles.cardInfoValue}>{y} E.C. National Exam</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.cardStartPrompt}>
+                        <Text style={styles.cardStartPromptText}>Tap card to start examination →</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          /* ════════════════════════════════════════════════════════════════
+              MODE B: INDIVIDUAL YEAR TAB SELECTED (Matches Screenshot 3)
+             ════════════════════════════════════════════════════════════════ */
+          <View style={styles.individualYearContent}>
+            {activeYearExam ? (
+              (() => {
+                const isYearLocked = activeYearExam.accessLevel === "premium" && !isPremium;
+                const yearQCount = activeYearExam.questionIds?.length || 0;
+
+                if (isYearLocked) {
+                  return (
+                    <Card style={styles.lockedYearBanner}>
+                      <View style={styles.lockedIconWrapper}>
+                        <Icon color="#F59E0B" name="lock-closed" size={56} />
+                      </View>
+                      <Text style={styles.lockedBannerTitle}>
+                        {selectedYearTab} National Exam is Locked
+                      </Text>
+                      <Text style={styles.lockedBannerSub}>
+                        Upgrade to Burka Exam Premium to unlock all questions, curriculum units, and official explanations for the {selectedYearTab} exam.
+                      </Text>
+                      <Button
+                        onPress={() => onNavigatePayments && onNavigatePayments()}
+                        style={{ marginTop: SPACING.md }}
+                        variant="primary"
+                      >
+                        Upgrade to Premium
+                      </Button>
+                    </Card>
+                  );
+                }
+
+                return (
+                  <View>
+                    {/* Full Exam Card at Top */}
+                    <Card style={styles.fullYearTopCard}>
+                      <View style={styles.fullYearCardHeader}>
+                        <Text style={styles.fullYearCardTitle}>
+                          {selectedYearTab} E.C. National Examination
+                        </Text>
+                        <Text style={styles.fullYearCardSub}>
+                          {yearQCount} Questions · {activeYearExam.durationMinutes || 120} min
+                        </Text>
+                      </View>
+                      <Button
+                        loading={loadingExamId === activeYearExam._id}
+                        onPress={() => onStartExam && onStartExam(activeYearExam)}
+                        style={styles.fullYearPracticeBtn}
+                        variant="primary"
+                      >
+                        Practice Full {selectedYearTab} Exam ({yearQCount} Qs)
+                      </Button>
+                    </Card>
+
+                    {/* Section Header */}
+                    <View style={styles.chapterSectionHeader}>
+                      <Text style={styles.chapterSectionTitle}>
+                        Curriculum Chapters in {selectedYearTab} Exam
+                      </Text>
+                    </View>
+
+                    {/* Chapter-by-Chapter and Grade-Based Layout (Matches Screenshot 3) */}
+                    <View style={styles.gradeGroupContainer}>
+                      {chaptersByGrade.map((gradeGroup) => (
+                        <View key={gradeGroup.key} style={styles.gradeBlock}>
+                          {gradeGroup.items.map((unit, uIdx) => {
+                            const qCount = getChapterQuestionCount(unit._id, unit.title, activeYearExam);
+                            const { percent } = getProgressForContent(unit._id);
+                            const unitOrder = unit.order ?? (uIdx + 1);
+
+                            // Clean Unit title
+                            const unitTitleMatch = String(unit.title || "").match(/^(?:Unit|Chapter)\s*(\d+)/i);
+                            const unitLabel = unitTitleMatch ? `Unit ${unitTitleMatch[1]}` : `Unit ${unitOrder}`;
+                            const cleanTopic = String(unit.title || "")
+                              .replace(/^(?:Unit|Chapter)\s*\d+:\s*/i, "")
+                              .trim() || unit.name || "Curriculum Unit";
+
                             return (
-                              <View key={match.exam._id} style={styles.chapterYearRow}>
-                                <View style={styles.chapterYearInfo}>
-                                  <Text style={styles.chapterYearLabel}>
-                                    {match.year} National Exam
-                                  </Text>
-                                  <Text style={styles.chapterYearCount}>
-                                    {match.questionCount !== null
-                                      ? `${match.questionCount} questions in this chapter`
-                                      : `${match.exam.title}`}
+                              <TouchableOpacity
+                                activeOpacity={0.75}
+                                key={unit._id || uIdx}
+                                onPress={() => {
+                                  if (qCount === 0) {
+                                    alert(`Unit ${unitOrder} has no specific questions assigned in the ${selectedYearTab} national paper.`);
+                                    return;
+                                  }
+                                  onStartExam && onStartExam(activeYearExam, { chapterId: unit._id });
+                                }}
+                                style={styles.chapterRow}
+                              >
+                                {/* Left: Circular Grade Badge (Matches Screenshot 3) */}
+                                <View style={[styles.gradeCircleBadge, { backgroundColor: gradeGroup.color }]}>
+                                  <Text style={styles.gradeCircleText}>
+                                    {gradeGroup.gradeNum}
                                   </Text>
                                 </View>
-                                <TouchableOpacity
-                                  activeOpacity={0.8}
-                                  disabled={isMatchLoading}
-                                  onPress={() => match.exam?.accessLevel === "premium" && !isPremium && onNavigatePayments ? onNavigatePayments() : onStartExam(match.exam, { chapterId: match.chapterId || chId })}
-                                  style={styles.chapterStartBtn}
-                                >
-                                  <Icon color={COLORS.onPrimary} name={match.exam?.accessLevel === "premium" && !isPremium ? "lock-closed" : "play"} size={12} />
-                                  <Text style={styles.chapterStartBtnText}>
-                                    {isMatchLoading
-                                      ? "Opening..."
-                                      : match.exam?.accessLevel === "premium" && !isPremium
-                                        ? "Unlock"
-                                        : `Practise ${match.year}`}
+
+                                {/* Center: Unit Name & Topic & Progress Bar */}
+                                <View style={styles.chapterCenterInfo}>
+                                  <Text style={styles.chapterUnitText}>{unitLabel}</Text>
+                                  <Text numberOfLines={1} style={styles.chapterTopicText}>
+                                    {cleanTopic}
                                   </Text>
-                                </TouchableOpacity>
-                              </View>
+
+                                  {/* Progress bar indicator */}
+                                  <View style={styles.chapterProgressBarBg}>
+                                    <View
+                                      style={[
+                                        styles.chapterProgressBarFill,
+                                        {
+                                          width: `${Math.min(100, Math.max(percent > 0 ? percent : qCount > 0 ? 10 : 0, 0))}%`,
+                                          backgroundColor: percent > 50 ? "#00897B" : "#E11D48"
+                                        }
+                                      ]}
+                                    />
+                                  </View>
+                                </View>
+
+                                {/* Right: Question Count (Matches Screenshot 3) */}
+                                <View style={styles.chapterRightInfo}>
+                                  <Text style={styles.chapterQuesCountText}>
+                                    {qCount} ques
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
                             );
                           })}
                         </View>
-                      ) : (
-                        <View style={styles.chapterEmptyExams}>
-                          <Text style={styles.chapterEmptyExamsText}>
-                            Questions from this unit are included in full exam papers under "By Year".
-                          </Text>
-                        </View>
-                      )}
-                    </Card>
-                  );
-                })}
+                      ))}
+                    </View>
+                  </View>
+                );
+              })()
+            ) : (
+              <EmptyState
+                icon="document-text-outline"
+                message={`No national examination papers found for ${selectedYearTab}.`}
+                title="Exam not available"
+              />
+            )}
+          </View>
+        )}
+
+        {/* ── STUDY NOTES FOR THIS SUBJECT (Collapsible Section) ── */}
+        {subjectNotes.length > 0 && (
+          <View style={styles.notesSection}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setNotesExpanded(!notesExpanded)}
+              style={styles.notesSectionHeader}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Icon color="#00796B" name="book-outline" size={18} />
+                <Text style={styles.notesSectionTitle}>
+                  Study Notes for {subject.name} ({subjectNotes.length})
+                </Text>
               </View>
-            ))
-          )}
-        </View>
-      )}
-    </ScrollView>
+              <Icon
+                color={COLORS.textMuted}
+                name={notesExpanded ? "chevron-up" : "chevron-down"}
+                size={18}
+              />
+            </TouchableOpacity>
+
+            {notesExpanded && (
+              <View style={styles.notesList}>
+                {subjectNotes.map((note) => (
+                  <Card key={note._id || note.id} style={styles.noteItemCard}>
+                    <Text style={styles.noteItemTitle}>{note.title}</Text>
+                    <Text numberOfLines={3} style={styles.noteItemBody}>
+                      {note.body}
+                    </Text>
+                  </Card>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollWrapper: {
-    flex: 1
-  },
-  container: {
-    padding: SPACING.md,
-    paddingBottom: SPACING.xl * 2
-  },
-  back: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 5,
-    marginBottom: SPACING.md,
-    paddingVertical: 3
-  },
-  backText: {
-    color: COLORS.primaryDark,
-    fontSize: 13,
-    fontWeight: "800"
-  },
-  headingRow: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: SPACING.lg
-  },
-  titleContainer: {
+  screenWrapper: {
     flex: 1,
+    backgroundColor: COLORS.background
+  },
+  // ── Top Teal Header Bar (Matches Screenshots 2, 3, 4) ──
+  topTealBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#00796B",
+    paddingHorizontal: SPACING.md,
+    paddingTop: Platform.OS === "android" ? 12 : 8,
+    paddingBottom: 12,
+    height: 56
+  },
+  backButton: {
+    padding: 6,
     marginRight: SPACING.sm
   },
-  title: {
-    color: COLORS.text,
-    fontSize: 25,
-    fontWeight: "800",
-    letterSpacing: -0.6
-  },
-  subtitle: {
-    color: COLORS.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 4
-  },
-  accessPill: {
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 13,
-    paddingVertical: 7
-  },
-  accessText: {
-    color: COLORS.primaryDark,
-    fontSize: 12,
-    fontWeight: "800"
-  },
-  countPill: {
-    alignItems: "center",
-    backgroundColor: COLORS.surfaceAlt || "#E5E7EB",
-    borderRadius: RADIUS.full,
-    height: 22,
-    justifyContent: "center",
-    minWidth: 22,
-    paddingHorizontal: 8
-  },
-  countText: {
-    color: COLORS.primaryDark,
-    fontSize: 12,
-    fontWeight: "800"
-  },
-  yearGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.md
-  },
-  yearCard: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    minHeight: 150,
-    padding: SPACING.lg,
-    width: "47.5%",
-    ...SHADOW.sm
-  },
-  year: {
-    color: COLORS.primary,
-    fontSize: 32,
-    fontWeight: "900",
-    letterSpacing: -1
-  },
-  questionCount: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    marginTop: 4
-  },
-  practiceRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 5,
-    marginTop: "auto"
-  },
-  practiceText: {
-    color: COLORS.textMuted,
-    fontSize: 14,
-    fontWeight: "700"
-  },
-  emptyContainer: {
-    marginBottom: SPACING.lg
-  },
-  sectionHeaderRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: SPACING.md
-  },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: 17,
-    fontWeight: "800"
-  },
-  notesActionButton: {
-    alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.primary,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1.5,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: SPACING.xl,
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    ...SHADOW.sm
-  },
-  notesActionButtonActive: {
-    backgroundColor: COLORS.primaryBg,
-    borderColor: COLORS.primaryDark
-  },
-  notesActionLeft: {
-    alignItems: "center",
-    flex: 1,
-    flexDirection: "row",
-    gap: 12
-  },
-  notesIconCircle: {
-    alignItems: "center",
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: 20,
-    height: 40,
-    justifyContent: "center",
-    width: 40
-  },
-  notesIconCircleActive: {
-    backgroundColor: COLORS.primary
-  },
-  notesActionInfo: {
+  topBarTitleBox: {
     flex: 1
   },
-  notesActionTitle: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "800"
-  },
-  notesActionSub: {
-    color: COLORS.textMuted,
-    fontSize: 11,
-    marginTop: 2
-  },
-  notesActionPill: {
-    alignItems: "center",
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: RADIUS.full,
-    flexDirection: "row",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 7
-  },
-  notesActionPillActive: {
-    backgroundColor: COLORS.primary
-  },
-  notesActionPillText: {
-    color: COLORS.primaryDark,
-    fontSize: 12,
-    fontWeight: "800"
-  },
-  notesActionPillTextActive: {
-    color: COLORS.onPrimary
-  },
-  notesModeContainer: {
-    marginTop: SPACING.xs
-  },
-  notesHeaderBar: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: SPACING.md
-  },
-  notesMainTitle: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: "800"
-  },
-  notesMainSub: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    marginTop: 2
-  },
-  notesList: {
-    gap: SPACING.md
-  },
-  noteItemCard: {
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    marginBottom: SPACING.sm,
-    padding: SPACING.md,
-    ...SHADOW.sm
-  },
-  noteCardHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 8
-  },
-  chapterTag: {
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 3
-  },
-  chapterTagText: {
-    color: COLORS.primaryDark,
-    fontSize: 11,
-    fontWeight: "800"
-  },
-  chapterNameText: {
-    color: COLORS.textMuted,
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "600"
-  },
-  noteTitle: {
-    color: COLORS.text,
-    fontSize: 16,
+  topBarTitle: {
+    fontSize: 20,
     fontWeight: "800",
-    marginBottom: 6
+    color: "#FFFFFF",
+    letterSpacing: -0.3
   },
-  noteBodySnippet: {
-    color: COLORS.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 10
+  topBarRightIcons: {
+    padding: 6
   },
-  readOfflinePill: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: RADIUS.full,
-    flexDirection: "row",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5
-  },
-  readOfflineText: {
-    color: COLORS.primaryDark,
-    fontSize: 11,
-    fontWeight: "800"
-  },
-  personalSection: {
-    borderTopColor: COLORS.border,
-    borderTopWidth: 1,
-    marginTop: SPACING.md,
-    paddingTop: SPACING.md
-  },
-  personalHeader: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "800",
-    marginBottom: SPACING.sm
-  },
-  personalNoteCard: {
-    borderLeftColor: COLORS.secondary || "#10B981",
-    borderLeftWidth: 4
-  },
-  personalTag: {
-    backgroundColor: "#D1FAE5",
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 3
-  },
-  personalTagText: {
-    color: "#065F46",
-    fontSize: 10,
-    fontWeight: "800"
-  },
-  personalDate: {
-    color: COLORS.textMuted,
-    fontSize: 11
-  },
-  personalFormCard: {
-    borderColor: COLORS.primaryLight || "#93C5FD",
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    marginBottom: SPACING.md,
-    padding: SPACING.md
-  },
-  formTitle: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "800",
-    marginBottom: SPACING.sm
-  },
-  formErrorText: {
-    color: COLORS.danger || "#EF4444",
-    fontSize: 12,
-    marginBottom: SPACING.xs
-  },
-  readerContainer: {
-    backgroundColor: COLORS.background,
-    flex: 1
-  },
-  readerHeader: {
-    alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderBottomColor: COLORS.border,
+
+  // ── Horizontal Year Tabs (Matches Screenshots 2, 3, 4) ──
+  yearTabsContainer: {
+    backgroundColor: "#00796B",
     borderBottomWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm
-  },
-  readerBackBtn: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 4,
-    padding: SPACING.xs
-  },
-  readerBackText: {
-    color: COLORS.primary,
-    fontSize: 15,
-    fontWeight: "800"
-  },
-  offlineProtectedBadge: {
-    alignItems: "center",
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.full,
-    flexDirection: "row",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5
-  },
-  offlineProtectedBadgeText: {
-    color: COLORS.onPrimary,
-    fontSize: 11,
-    fontWeight: "800"
-  },
-  readerContent: {
-    padding: SPACING.lg,
-    paddingBottom: SPACING.xxl
-  },
-  readerMetaRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: SPACING.sm
-  },
-  readerSubjectBadge: {
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 4
-  },
-  readerSubjectText: {
-    color: COLORS.primaryDark,
-    fontSize: 12,
-    fontWeight: "800"
-  },
-  readerChapterText: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    fontWeight: "600"
-  },
-  readerTitle: {
-    color: COLORS.text,
-    fontSize: 22,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-    lineHeight: 28,
-    marginBottom: SPACING.md
-  },
-  securityBanner: {
-    alignItems: "center",
-    backgroundColor: COLORS.primaryBg,
-    borderColor: COLORS.primaryLight || "#93C5FD",
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: SPACING.lg,
-    padding: SPACING.sm
-  },
-  securityBannerText: {
-    color: COLORS.primaryDark,
-    flex: 1,
-    fontSize: 11,
-    lineHeight: 15
-  },
-  readerBodyContainer: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    padding: SPACING.md
-  },
-  readerBodyText: {
-    color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 24
-  },
-  displayModeContainer: {
-    flexDirection: "row",
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: RADIUS.lg,
-    padding: 4,
-    marginBottom: SPACING.md,
-    gap: 4,
-    ...SHADOW.sm
-  },
-  displayModeBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    borderRadius: RADIUS.md,
-    gap: 6
-  },
-  displayModeBtnActive: {
-    backgroundColor: COLORS.primary
-  },
-  displayModeBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.textMuted
-  },
-  displayModeBtnTextActive: {
-    color: COLORS.onPrimary
-  },
-  chapterSection: {
-    marginBottom: SPACING.md
-  },
-  chapterCard: {
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    ...SHADOW.sm
-  },
-  chapterCardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.xs
-  },
-  chapterOrderBadge: {
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 3
-  },
-  chapterOrderBadgeText: {
-    color: COLORS.primaryDark,
-    fontSize: 11,
-    fontWeight: "800"
-  },
-  chapterExamCountText: {
-    color: COLORS.textMuted,
-    fontSize: 11,
-    fontWeight: "600"
-  },
-  chapterTitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: "800",
-    marginTop: 4,
-    marginBottom: 4
-  },
-  chapterDesc: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    lineHeight: 17,
-    marginBottom: SPACING.sm
-  },
-  chapterExamsContainer: {
-    marginTop: SPACING.xs,
-    gap: 6
-  },
-  chapterExamRow: {
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.borderLight || "#E5E7EB",
-    borderWidth: 1,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center"
-  },
-  chapterExamInfo: {
-    flex: 1,
-    marginRight: 8
-  },
-  chapterExamTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.text
-  },
-  chapterExamMeta: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    marginTop: 2
-  },
-  chapterStartBtn: {
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: 12,
-    paddingVertical: 7
-  },
-  chapterStartBtnText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: COLORS.onPrimary
-  },
-  chapterEmptyExams: {
-    backgroundColor: COLORS.background,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
-    marginTop: SPACING.xs
-  },
-  chapterEmptyExamsText: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    fontStyle: "italic"
+    borderBottomColor: "rgba(0, 0, 0, 0.08)"
   },
   yearTabsScroll: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-    paddingBottom: SPACING.md
+    paddingHorizontal: SPACING.sm,
+    gap: 16
   },
-  yearTab: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: 14,
+  yearTabItem: {
     paddingVertical: 10,
-    flexDirection: "row",
+    paddingHorizontal: 8,
     alignItems: "center",
-    gap: 8,
-    ...SHADOW.sm
+    justifyContent: "center",
+    position: "relative"
   },
-  yearTabActive: {
-    backgroundColor: COLORS.primaryBg,
-    borderColor: COLORS.primary
+  yearTabItemActive: {
+    // Active container
   },
   yearTabText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: COLORS.text
+    fontSize: 14,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.72)"
   },
   yearTabTextActive: {
-    color: COLORS.primaryDark
+    color: "#FFFFFF",
+    fontWeight: "900"
   },
-  yearTabBadge: {
-    backgroundColor: "#F3F4F6",
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 7,
-    paddingVertical: 2
+  yearTabUnderline: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: "#E91E63", // Red/Magenta underline matching screenshots
+    borderRadius: 2
   },
-  yearTabBadgeActive: {
-    backgroundColor: COLORS.primary
-  },
-  yearTabBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: COLORS.textMuted
-  },
-  yearTabBadgeTextActive: {
-    color: COLORS.onPrimary
-  },
-  selectedExamContainer: {
-    marginBottom: SPACING.md
-  },
-  selectedExamBanner: {
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
+
+  // ── Main Scroll Content ──
+  mainScrollContent: {
     padding: SPACING.md,
-    marginBottom: SPACING.md,
+    paddingBottom: SPACING.xxl + 60
+  },
+
+  // ── Mode A: "All" Tab Layout (Matches Screenshot 4) ──
+  allTabContent: {
+    gap: SPACING.md
+  },
+  combinedCard: {
+    padding: 0,
+    overflow: "hidden",
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#FFFFFF",
     ...SHADOW.sm
   },
-  selectedExamTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: SPACING.sm
-  },
-  selectedExamInfo: {
-    flex: 1,
-    marginRight: 8
-  },
-  selectedExamTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: COLORS.text,
-    marginBottom: 4
-  },
-  selectedExamSub: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    lineHeight: 16
-  },
-  fullExamBtn: {
-    marginTop: SPACING.xs
-  },
-  premiumBannerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 8,
-    marginTop: SPACING.sm,
-    gap: 6
-  },
-  premiumBannerText: {
-    flex: 1,
-    fontSize: 11,
-    color: COLORS.primaryDark,
-    lineHeight: 15
-  },
-  upgradeLink: {
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 4
-  },
-  upgradeLinkText: {
-    color: COLORS.onPrimary,
-    fontSize: 10,
-    fontWeight: "800"
-  },
-  chapterSectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: SPACING.xs,
-    marginBottom: 2
-  },
-  unitSectionHeading: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: COLORS.text
-  },
-  unitSectionSub: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    lineHeight: 17,
-    marginBottom: SPACING.md
-  },
-  chapterCountPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3
-  },
-  chapterCountPillText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: COLORS.primaryDark
-  },
-  chapterYearBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.textMuted
-  },
-  chapterActionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: SPACING.sm,
-    paddingTop: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border
-  },
-  chapterYearContext: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    flex: 1,
-    marginRight: 8
-  },
-  chapterYearsList: {
-    marginTop: SPACING.xs,
-    gap: 6
-  },
-  chapterYearRow: {
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.borderLight || "#E5E7EB",
-    borderWidth: 1,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
+  combinedTopBanner: {
+    backgroundColor: "#00796B",
+    paddingVertical: 10,
+    paddingHorizontal: SPACING.md,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center"
   },
-  chapterYearInfo: {
-    flex: 1,
-    marginRight: 8
+  combinedBannerTitle: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800"
   },
-  chapterYearLabel: {
-    fontSize: 13,
+  combinedCardBody: {
+    padding: SPACING.md
+  },
+  combinedTextRow: {
+    marginBottom: SPACING.sm
+  },
+  combinedMainHeading: {
+    fontSize: 16,
     fontWeight: "800",
     color: COLORS.text
   },
-  chapterYearCount: {
-    fontSize: 11,
+  combinedSubHeading: {
+    fontSize: 12,
     color: COLORS.textMuted,
     marginTop: 2
+  },
+  combinedStartBtn: {
+    marginTop: SPACING.xs
+  },
+
+  // Year Exam Card (Matches Screenshot 4)
+  yearExamCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+    ...SHADOW.sm
+  },
+  yearExamCardHeader: {
+    backgroundColor: "#00796B",
+    paddingVertical: 11,
+    paddingHorizontal: SPACING.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  yearExamCardHeaderText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800"
+  },
+  unlockedCardBody: {
+    padding: SPACING.md
+  },
+  progressCircleContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginVertical: 12
+  },
+  progressCircleRing: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    borderWidth: 7,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  progressCircleNumber: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: COLORS.text
+  },
+  progressCirclePercent: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.textMuted
+  },
+  cardInfoTable: {
+    gap: 6,
+    marginVertical: SPACING.sm
+  },
+  cardInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 2
+  },
+  cardInfoLabel: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontWeight: "600"
+  },
+  cardInfoValue: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontWeight: "800"
+  },
+  cardStartPrompt: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    paddingTop: 8,
+    marginTop: 6,
+    alignItems: "center"
+  },
+  cardStartPromptText: {
+    fontSize: 12,
+    color: "#00796B",
+    fontWeight: "800"
+  },
+
+  // Locked Card (Matches Screenshot 4)
+  lockedCardBody: {
+    paddingVertical: 36,
+    paddingHorizontal: SPACING.md,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  lockedIconWrapper: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8
+  },
+  lockedHintText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontWeight: "600",
+    textAlign: "center"
+  },
+
+  // ── Mode B: Individual Year Layout (Matches Screenshot 3) ──
+  individualYearContent: {
+    gap: SPACING.md
+  },
+  lockedYearBanner: {
+    padding: SPACING.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center"
+  },
+  lockedBannerTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginTop: SPACING.sm,
+    textAlign: "center"
+  },
+  lockedBannerSub: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    marginTop: 6,
+    textAlign: "center",
+    lineHeight: 18
+  },
+  fullYearTopCard: {
+    padding: SPACING.md,
+    marginBottom: SPACING.xs
+  },
+  fullYearCardHeader: {
+    marginBottom: SPACING.sm
+  },
+  fullYearCardTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: COLORS.text
+  },
+  fullYearCardSub: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 2
+  },
+  fullYearPracticeBtn: {
+    marginTop: 4
+  },
+  chapterSectionHeader: {
+    marginBottom: SPACING.xs
+  },
+  chapterSectionTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: COLORS.text
+  },
+  gradeGroupContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden"
+  },
+  gradeBlock: {
+    // Block for a grade
+  },
+  // Chapter Row matching Screenshot 3
+  chapterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9"
+  },
+  gradeCircleBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12
+  },
+  gradeCircleText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  chapterCenterInfo: {
+    flex: 1,
+    marginRight: 8
+  },
+  chapterUnitText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginBottom: 2
+  },
+  chapterTopicText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginBottom: 4
+  },
+  chapterProgressBarBg: {
+    height: 4,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 2,
+    overflow: "hidden",
+    width: "90%"
+  },
+  chapterProgressBarFill: {
+    height: 4,
+    borderRadius: 2
+  },
+  chapterRightInfo: {
+    alignItems: "flex-end"
+  },
+  chapterQuesCountText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textMuted
+  },
+
+  // ── Notes Section ──
+  notesSection: {
+    marginTop: SPACING.lg,
+    backgroundColor: "#FFFFFF",
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden"
+  },
+  notesSectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: SPACING.md,
+    backgroundColor: "rgba(0, 121, 107, 0.06)"
+  },
+  notesSectionTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#00796B"
+  },
+  notesList: {
+    padding: SPACING.md,
+    gap: SPACING.sm
+  },
+  noteItemCard: {
+    padding: SPACING.sm + 2
+  },
+  noteItemTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginBottom: 4
+  },
+  noteItemBody: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    lineHeight: 17
   }
 });

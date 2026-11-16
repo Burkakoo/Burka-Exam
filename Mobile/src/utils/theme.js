@@ -31,7 +31,18 @@ export const COLORS = {
   purple: "#9f7bf0",
   purpleBg: "rgba(159, 123, 240, 0.12)",
   silver: "#9ca3af",
-  bronze: "#c47a3a"
+  bronze: "#c47a3a",
+  teal: "#00796B",
+  tealDark: "#004D40",
+  tealLight: "#00897B",
+  tealBg: "rgba(0, 121, 107, 0.12)",
+  pink: "#E91E63",
+  pinkDark: "#C2185B",
+  pinkBg: "rgba(233, 30, 99, 0.12)",
+  grade12: "#1976D2",
+  grade11: "#E91E63",
+  grade10: "#FF9800",
+  grade9: "#00897B"
 };
 
 export const SPACING = {

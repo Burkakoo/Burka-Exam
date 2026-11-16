@@ -6,6 +6,37 @@ import { Icon } from "../components/Icon.js";
 import { EmptyState } from "../components/EmptyState.js";
 import { COLORS, RADIUS, SHADOW, SPACING } from "../utils/theme.js";
 
+const SUBJECT_METADATA = {
+  BIO: { name: "Biology", icon: "leaf-outline", stream: "natural", color: "#00897B" },
+  CHEM: { name: "Chemistry", icon: "flask-outline", stream: "natural", color: "#0284C7" },
+  PHYS: { name: "Physics", icon: "speedometer-outline", stream: "natural", color: "#6366F1" },
+  MATH: { name: "Mathematics", icon: "calculator-outline", stream: "both", color: "#0D9488" },
+  ENG: { name: "English", icon: "book-outline", stream: "both", color: "#8B5CF6" },
+  APTITUDE: { name: "Scholastic Aptitude (SAT)", icon: "bulb-outline", stream: "both", color: "#D97706" },
+  SAT: { name: "Scholastic Aptitude (SAT)", icon: "bulb-outline", stream: "both", color: "#D97706" },
+  GEOG: { name: "Geography", icon: "earth-outline", stream: "social", color: "#059669" },
+  HIST: { name: "History", icon: "time-outline", stream: "social", color: "#DC2626" },
+  ECON: { name: "Economics", icon: "trending-up-outline", stream: "social", color: "#EA580C" }
+};
+
+function getSubjectDiscipline(subj) {
+  if (!subj) return "";
+  const code = String(subj.code || "").toUpperCase();
+  const name = String(subj.name || "").toLowerCase();
+
+  if (code.includes("BIO") || name.includes("bio")) return "BIO";
+  if (code.includes("CHEM") || name.includes("chem")) return "CHEM";
+  if (code.includes("PHYS") || name.includes("phys")) return "PHYS";
+  if (code.includes("MATH") || name.includes("math")) return "MATH";
+  if (code.includes("ENG") || name.includes("eng")) return "ENG";
+  if (code.includes("GEOG") || name.includes("geog")) return "GEOG";
+  if (code.includes("HIST") || name.includes("hist")) return "HIST";
+  if (code.includes("ECON") || name.includes("econ")) return "ECON";
+  if (code.includes("APTITUDE") || name.includes("aptitude") || code.includes("SAT") || name.includes("sat")) return "SAT";
+
+  return code.split("_")[0] || code;
+}
+
 function getYear(exam) {
   if (exam.examYear || exam.year) return String(exam.examYear || exam.year);
   return (exam.title || "").match(/\b(?:19|20)\d{2}\b/)?.[0] || "Practice";
@@ -17,272 +48,99 @@ function formatShortGrade(gradeLevel) {
   return match ? `G${match[1]}` : String(gradeLevel).toUpperCase();
 }
 
-function getExamChapters(exam) {
-  if (Array.isArray(exam?.chapterBreakdown) && exam.chapterBreakdown.length > 0) {
-    return exam.chapterBreakdown.map((ch) => ({
-      id: String(ch.chapterId || Math.random()),
-      title: ch.title || "Curriculum Unit",
-      order: ch.order ?? 999,
-      gradeLevel: ch.gradeLevel || "",
-      questionCount: ch.questionCount ?? null
-    }));
-  }
-  if (!Array.isArray(exam?.chapterIds)) return [];
-  return exam.chapterIds.map((ch) => {
-    if (typeof ch === "object" && ch !== null) {
-      return {
-        id: String(ch._id || ch.id || Math.random()),
-        title: ch.title || "Curriculum Unit",
-        order: ch.order ?? 999,
-        gradeLevel: ch.gradeLevel || "",
-        questionCount: null
-      };
-    }
-    return { id: String(ch), title: "Curriculum Unit", order: 999, gradeLevel: "", questionCount: null };
-  });
-}
-
-function getExamTitleBase(exam) {
-  const raw = String(exam.title || "").trim();
-  const cleaned = raw
-    .replace(/\s*\(\d{4}\s*E\.?C\.?\)/i, "")
-    .replace(/\s*(?:ESSLCE|EUEE)?\s*\d{4}\s*(?:E\.?C\.?)?/i, "")
-    .trim();
-  return cleaned || exam.subjectId?.name || raw || "Entrance Exam";
-}
-
-export function ExamsScreen({ exams = [], onStartExam, loadingExamId, user, isPremium = false, onNavigatePayments }) {
+export function ExamsScreen({
+  exams = [],
+  subjects = [],
+  onSelectSubject,
+  onStartExam,
+  loadingExamId,
+  user,
+  isPremium = false,
+  onNavigatePayments
+}) {
   const userStream = user?.stream || "natural";
-  const isNatural = userStream === "natural";
-
-  const [viewMode, setViewMode] = useState("year");
-  const [selectedYear, setSelectedYear] = useState("all");
-  const [selectedTitleFilter, setSelectedTitleFilter] = useState("all");
+  const [selectedStreamFilter, setSelectedStreamFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [examTabMode, setExamTabMode] = useState("subjects"); // "subjects" | "papers"
 
-  const streamFilteredExams = useMemo(() => {
-    return exams.filter((exam) => {
-      const subjStream = exam.subjectId?.stream;
-      const subjCode = exam.subjectId?.code || "";
+  // 1. Group subjects by discipline (Mathematics, Biology, Chemistry, Physics, etc.)
+  const disciplineCards = useMemo(() => {
+    const map = new Map();
 
-      if (isNatural) {
-        if (subjStream) {
-          return subjStream === "natural" || subjStream === "both";
-        }
-        if (subjCode) {
-          return ["MATH", "PHYS", "CHEM", "BIO", "ENG", "APTITUDE", "SAT"].some((k) => subjCode.startsWith(k));
-        }
-        const t = (exam.title || "").toLowerCase();
-        if (t.includes("social") || t.includes("history") || t.includes("geography") || t.includes("economics")) {
-          return false;
-        }
-        return true;
-      } else {
-        if (subjStream) {
-          return subjStream === "social" || subjStream === "both";
-        }
-        if (subjCode) {
-          return ["HIST", "GEOG", "ECON", "ENG", "APTITUDE", "SAT", "MATH_SOC"].some((k) => subjCode.startsWith(k));
-        }
-        const t = (exam.title || "").toLowerCase();
-        if (t.includes("physics") || t.includes("chemistry") || t.includes("biology") || t.includes("natural")) {
-          return false;
-        }
-        return true;
+    (subjects || []).forEach((subj) => {
+      const disc = getSubjectDiscipline(subj);
+      if (!disc) return;
+      if (!map.has(disc)) {
+        map.set(disc, {
+          discipline: disc,
+          representativeSubject: subj,
+          subjects: [],
+          name: SUBJECT_METADATA[disc]?.name || subj.name || disc,
+          icon: SUBJECT_METADATA[disc]?.icon || "book-outline",
+          stream: SUBJECT_METADATA[disc]?.stream || subj.stream || "both",
+          color: SUBJECT_METADATA[disc]?.color || COLORS.tealLight,
+          exams: [],
+          totalQuestions: 0,
+          years: new Set()
+        });
+      }
+      const entry = map.get(disc);
+      entry.subjects.push(subj);
+    });
+
+    // Map exams to discipline
+    (exams || []).forEach((exam) => {
+      const examSubj = exam.subjectId;
+      const examSubjObj = typeof examSubj === "object" && examSubj !== null
+        ? examSubj
+        : (subjects || []).find((s) => String(s._id || s.id) === String(examSubj)) || null;
+
+      let disc = getSubjectDiscipline(examSubjObj);
+      if (!disc) {
+        const title = String(exam.title || "").toLowerCase();
+        if (title.includes("bio")) disc = "BIO";
+        else if (title.includes("chem")) disc = "CHEM";
+        else if (title.includes("phys")) disc = "PHYS";
+        else if (title.includes("math") || title.includes("calculus")) disc = "MATH";
+        else if (title.includes("eng")) disc = "ENG";
+        else if (title.includes("geog")) disc = "GEOG";
+        else if (title.includes("hist")) disc = "HIST";
+        else if (title.includes("econ")) disc = "ECON";
+        else if (title.includes("aptitude") || title.includes("sat")) disc = "SAT";
+      }
+
+      if (disc && map.has(disc)) {
+        const entry = map.get(disc);
+        entry.exams.push(exam);
+        entry.totalQuestions += (exam.questionIds?.length || 0);
+        entry.years.add(getYear(exam));
       }
     });
-  }, [exams, isNatural]);
 
-  // Real-time search filter by Exam Title
-  const searchFilteredExams = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return streamFilteredExams;
-    return streamFilteredExams.filter((exam) => {
-      const fullTitle = String(exam.title || "").toLowerCase();
-      const baseTitle = getExamTitleBase(exam).toLowerCase();
-      const subjectName = String(exam.subjectId?.name || "").toLowerCase();
-      const examYear = String(getYear(exam)).toLowerCase();
-      return (
-        fullTitle.includes(q) ||
-        baseTitle.includes(q) ||
-        subjectName.includes(q) ||
-        examYear.includes(q)
-      );
+    return Array.from(map.values());
+  }, [subjects, exams]);
+
+  // Filter discipline cards by stream and search
+  const filteredDisciplineCards = useMemo(() => {
+    return disciplineCards.filter((card) => {
+      // Stream filter
+      if (selectedStreamFilter === "natural") {
+        if (card.stream === "social") return false;
+      } else if (selectedStreamFilter === "social") {
+        if (card.stream === "natural") return false;
+      }
+
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchName = card.name.toLowerCase().includes(q);
+        const matchDisc = card.discipline.toLowerCase().includes(q);
+        if (!matchName && !matchDisc) return false;
+      }
+
+      return true;
     });
-  }, [streamFilteredExams, searchQuery]);
-
-  // Group by Exam Title
-  const titleGroups = useMemo(() => {
-    const map = {};
-    searchFilteredExams.forEach((exam) => {
-      const baseTitle = getExamTitleBase(exam);
-      if (!map[baseTitle]) map[baseTitle] = [];
-      map[baseTitle].push(exam);
-    });
-
-    const sortedTitles = Object.keys(map).sort((a, b) => a.localeCompare(b));
-    return sortedTitles.map((title) => ({
-      title,
-      exams: map[title].slice().sort((a, b) => {
-        const ya = Number(getYear(a)) || 0;
-        const yb = Number(getYear(b)) || 0;
-        return yb - ya;
-      })
-    }));
-  }, [searchFilteredExams]);
-
-  const allExamTitles = useMemo(() => {
-    const map = {};
-    streamFilteredExams.forEach((exam) => {
-      const baseTitle = getExamTitleBase(exam);
-      map[baseTitle] = true;
-    });
-    return Object.keys(map).sort((a, b) => a.localeCompare(b));
-  }, [streamFilteredExams]);
-
-  const filteredExams = useMemo(() => {
-    if (selectedTitleFilter === "all") return searchFilteredExams;
-    return searchFilteredExams.filter((ex) => getExamTitleBase(ex) === selectedTitleFilter);
-  }, [searchFilteredExams, selectedTitleFilter]);
-
-  // Group by Year (with exams inside each year sorted alphabetically by Exam Title)
-  const yearGroups = useMemo(() => {
-    const map = {};
-    filteredExams.forEach((exam) => {
-      const y = getYear(exam);
-      if (!map[y]) map[y] = [];
-      map[y].push(exam);
-    });
-
-    const sortedYears = Object.keys(map).sort((a, b) => {
-      if (a === "Practice") return 1;
-      if (b === "Practice") return -1;
-      return b.localeCompare(a, undefined, { numeric: true });
-    });
-
-    return sortedYears.map((year) => ({
-      year,
-      exams: map[year].slice().sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")))
-    }));
-  }, [filteredExams]);
-
-  const allYears = useMemo(() => {
-    return yearGroups.map((g) => g.year);
-  }, [yearGroups]);
-
-  function renderExamCard(item, showYearBadge = false) {
-    const isExamPremium = item.accessLevel === "premium";
-    const isLocked = isExamPremium && !isPremium;
-    const year = getYear(item);
-    const examChapters = getExamChapters(item);
-
-    return (
-      <Card key={item._id} style={styles.examCard}>
-        <View style={styles.badgeRow}>
-          <View style={styles.badgeLeft}>
-            <View
-              style={[
-                styles.accessBadge,
-                isExamPremium ? styles.premiumBadge : styles.freeBadge
-              ]}
-            >
-              {isExamPremium && (
-                <Icon
-                  name={isLocked ? "lock-closed" : "star"}
-                  size={11}
-                  color={COLORS.gold}
-                  style={{ marginRight: 3 }}
-                />
-              )}
-              <Text
-                style={[
-                  styles.accessBadgeText,
-                  isExamPremium ? styles.premiumBadgeText : styles.freeBadgeText
-                ]}
-              >
-                {isExamPremium ? "PREMIUM" : "FREE ACCESS"}
-              </Text>
-            </View>
-
-            {item.subjectId?.name ? (
-              <View style={styles.subjectBadge}>
-                <Text style={styles.subjectBadgeText}>{item.subjectId.name}</Text>
-              </View>
-            ) : null}
-
-            {showYearBadge && (
-              <View style={styles.yearBadge}>
-                <Text style={styles.yearBadgeText}>{year} E.C.</Text>
-              </View>
-            )}
-          </View>
-
-          <Text style={styles.durationText}>{item.durationMinutes} min</Text>
-        </View>
-
-        <Text style={styles.title}>{item.title}</Text>
-
-        {item.description ? (
-          <Text numberOfLines={2} style={styles.description}>
-            {item.description}
-          </Text>
-        ) : null}
-
-        {examChapters.length > 0 && (
-          <View style={styles.cardChaptersContainer}>
-            <Text style={styles.cardChaptersTitle}>
-              Practise by Chapter ({examChapters.length} units):
-            </Text>
-            <ScrollView
-              contentContainerStyle={styles.cardChaptersScroll}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-            >
-              {examChapters.map((ch, idx) => {
-                const gPrefix = formatShortGrade(ch.gradeLevel);
-                const unitMatch = String(ch.title || "").match(/^(?:Unit|Chapter)\s*(\d+)/i);
-                const shortUnit = unitMatch ? `Unit ${unitMatch[1]}` : `Unit ${idx + 1}`;
-                return (
-                  <TouchableOpacity
-                    key={ch.id || idx}
-                    onPress={() => isLocked && onNavigatePayments ? onNavigatePayments() : onStartExam(item, { chapterId: ch.id })}
-                    style={styles.cardChapterBtn}
-                  >
-                    <Icon color={isLocked ? COLORS.gold : COLORS.primary} name={isLocked ? "lock-closed" : "play-circle-outline"} size={13} />
-                    <Text style={styles.cardChapterBtnText}>
-                      {gPrefix ? `${gPrefix} • ` : ""}{shortUnit}
-                      {ch.questionCount ? ` (${ch.questionCount} Qs)` : ""}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-
-        <View style={styles.metaRow}>
-          <Text style={styles.metaText}>
-            Passing score: {item.passingScore || 50}%
-          </Text>
-          <Text style={styles.metaText}>
-            {item.questionIds?.length || 0} questions
-          </Text>
-        </View>
-
-        <Button
-          icon={isLocked ? "lock-closed" : undefined}
-          loading={loadingExamId === item._id}
-          onPress={() => isLocked && onNavigatePayments ? onNavigatePayments() : onStartExam(item)}
-          style={styles.startBtn}
-          variant={isLocked ? "secondary" : "primary"}
-        >
-          {isLocked
-            ? `Unlock Practice (${item.questionIds?.length || 0} Qs)`
-            : `Practice Full ${year} E.C. Exam (${item.questionIds?.length || 0} Qs)`}
-        </Button>
-      </Card>
-    );
-  }
+  }, [disciplineCards, selectedStreamFilter, searchQuery]);
 
   return (
     <ScrollView
@@ -291,277 +149,140 @@ export function ExamsScreen({ exams = [], onStartExam, loadingExamId, user, isPr
       showsVerticalScrollIndicator={true}
       style={styles.scrollWrapper}
     >
-      {/* Screen Header */}
-      <Text style={styles.header}>
-        <Icon color={COLORS.primary} name={isNatural ? "flask-outline" : "library-outline"} size={20} />{"  "}
-        {isNatural ? "Natural Science Exams" : "Social Science Exams"}
-      </Text>
-      <Text style={styles.subHeader}>
-        Past papers, Entrances and Models organized by year and exam title.
-      </Text>
+      {/* Intro Header */}
+      <View style={styles.introHeader}>
+        <Text style={styles.screenTitle}>Examinations</Text>
+        <Text style={styles.screenSubtitle}>
+          Select a subject to practise national entrance and model exam questions by year.
+        </Text>
+      </View>
 
-      {/* Real-Time Search Bar by Exam Title */}
-      <View style={styles.searchContainer}>
+      {/* Stream Filter Pills */}
+      <View style={styles.filterBar}>
+        <TouchableOpacity
+          onPress={() => setSelectedStreamFilter("all")}
+          style={[styles.filterPill, selectedStreamFilter === "all" && styles.filterPillActive]}
+        >
+          <Text style={[styles.filterPillText, selectedStreamFilter === "all" && styles.filterPillTextActive]}>
+            All Streams
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setSelectedStreamFilter("natural")}
+          style={[styles.filterPill, selectedStreamFilter === "natural" && styles.filterPillActive]}
+        >
+          <Icon
+            color={selectedStreamFilter === "natural" ? "#FFFFFF" : COLORS.textMuted}
+            name="flask-outline"
+            size={14}
+          />
+          <Text style={[styles.filterPillText, selectedStreamFilter === "natural" && styles.filterPillTextActive]}>
+            Natural Science
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setSelectedStreamFilter("social")}
+          style={[styles.filterPill, selectedStreamFilter === "social" && styles.filterPillActive]}
+        >
+          <Icon
+            color={selectedStreamFilter === "social" ? "#FFFFFF" : COLORS.textMuted}
+            name="library-outline"
+            size={14}
+          />
+          <Text style={[styles.filterPillText, selectedStreamFilter === "social" && styles.filterPillTextActive]}>
+            Social Science
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Search Input */}
+      <View style={styles.searchBox}>
         <Icon color={COLORS.textMuted} name="search-outline" size={18} />
         <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          clearButtonMode="while-editing"
-          onChangeText={(text) => setSearchQuery(text)}
-          placeholder="Search exams by title (e.g., Biology 2017, Regional Model)..."
+          onChangeText={setSearchQuery}
+          placeholder="Search subjects (e.g. Mathematics, Biology)..."
           placeholderTextColor={COLORS.textMuted}
           style={styles.searchInput}
           value={searchQuery}
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity
-            accessibilityLabel="Clear search"
-            onPress={() => setSearchQuery("")}
-            style={styles.clearSearchBtn}
-          >
-            <Icon color={COLORS.textMuted} name="close-circle" size={18} />
+          <TouchableOpacity onPress={() => setSearchQuery("")}>
+            <Icon color={COLORS.textMuted} name="close-circle" size={16} />
           </TouchableOpacity>
         )}
       </View>
 
-      {searchQuery.trim().length > 0 && (
-        <View style={styles.searchStatusRow}>
-          <Text style={styles.searchStatusText}>
-            Showing {filteredExams.length} {filteredExams.length === 1 ? "exam" : "exams"} matching "{searchQuery.trim()}"
-          </Text>
-          <TouchableOpacity onPress={() => setSearchQuery("")}>
-            <Text style={styles.resetSearchLink}>Clear</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Mode Toggle: By Year | By Exam Title | All Exams */}
-      <View style={styles.toggleRow}>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => setViewMode("year")}
-          style={[styles.toggleBtn, viewMode === "year" && styles.toggleBtnActive]}
-        >
-          <Icon
-            color={viewMode === "year" ? COLORS.onPrimary : COLORS.primary}
-            name="calendar"
-            size={16}
-          />
-          <Text
-            style={[styles.toggleBtnText, viewMode === "year" && styles.toggleBtnTextActive]}
-          >
-            By Year
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => setViewMode("title")}
-          style={[styles.toggleBtn, viewMode === "title" && styles.toggleBtnActive]}
-        >
-          <Icon
-            color={viewMode === "title" ? COLORS.onPrimary : COLORS.primary}
-            name="document-text-outline"
-            size={16}
-          />
-          <Text
-            style={[styles.toggleBtnText, viewMode === "title" && styles.toggleBtnTextActive]}
-          >
-            By Exam Title
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => setViewMode("all")}
-          style={[styles.toggleBtn, viewMode === "all" && styles.toggleBtnActive]}
-        >
-          <Icon
-            color={viewMode === "all" ? COLORS.onPrimary : COLORS.primary}
-            name="grid-outline"
-            size={16}
-          />
-          <Text
-            style={[styles.toggleBtnText, viewMode === "all" && styles.toggleBtnTextActive]}
-          >
-            All Exams
-          </Text>
-        </TouchableOpacity>
+      {/* Section Header */}
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>
+          Available Subjects ({filteredDisciplineCards.length})
+        </Text>
       </View>
 
-      {/* Exam Title Filter Chips */}
-      {allExamTitles.length > 1 && (
-        <ScrollView
-          contentContainerStyle={styles.filterScroll}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-        >
-          <TouchableOpacity
-            onPress={() => setSelectedTitleFilter("all")}
-            style={[
-              styles.filterChip,
-              selectedTitleFilter === "all" && styles.filterChipActive
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                selectedTitleFilter === "all" && styles.filterChipTextActive
-              ]}
-            >
-              All Exam Titles ({searchFilteredExams.length})
-            </Text>
-          </TouchableOpacity>
-          {allExamTitles.map((examTitle) => {
-            const isActive = selectedTitleFilter === examTitle;
+      {/* Subjects Grid */}
+      {filteredDisciplineCards.length === 0 ? (
+        <EmptyState
+          icon="document-text-outline"
+          message="Try adjusting your search query or stream filter."
+          title="No subjects found"
+        />
+      ) : (
+        <View style={styles.subjectGrid}>
+          {filteredDisciplineCards.map((card) => {
+            const sortedYears = Array.from(card.years).sort((a, b) => b.localeCompare(a));
+            const yearRangeText = sortedYears.length > 0
+              ? `${sortedYears[sortedYears.length - 1]} – ${sortedYears[0]} E.C.`
+              : "2013 – 2018 E.C.";
+
             return (
               <TouchableOpacity
-                key={examTitle}
-                onPress={() => setSelectedTitleFilter(examTitle)}
-                style={[styles.filterChip, isActive && styles.filterChipActive]}
+                activeOpacity={0.85}
+                key={card.discipline}
+                onPress={() => onSelectSubject && onSelectSubject(card.representativeSubject)}
+                style={styles.subjectCard}
               >
-                <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
-                  {examTitle}
-                </Text>
+                <View style={styles.cardTopRow}>
+                  <View style={[styles.subjectIconBox, { backgroundColor: card.color }]}>
+                    <Icon color="#FFFFFF" name={card.icon} size={24} />
+                  </View>
+                  <View style={styles.cardHeaderBadges}>
+                    <View style={styles.streamBadge}>
+                      <Text style={styles.streamBadgeText}>
+                        {card.stream === "both" ? "Both Streams" : card.stream === "social" ? "Social" : "Natural"}
+                      </Text>
+                    </View>
+                    <View style={styles.gradeBadge}>
+                      <Text style={styles.gradeBadgeText}>Grades 9–12</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <Text style={styles.cardSubjectName}>{card.name}</Text>
+
+                <View style={styles.statsRow}>
+                  <View style={styles.statItem}>
+                    <Icon color={COLORS.textMuted} name="calendar-outline" size={13} />
+                    <Text style={styles.statText}>{card.exams.length} National Papers</Text>
+                  </View>
+                  <View style={styles.statItem}>
+                    <Icon color={COLORS.textMuted} name="document-text-outline" size={13} />
+                    <Text style={styles.statText}>{card.totalQuestions} Questions</Text>
+                  </View>
+                </View>
+
+                <View style={styles.cardFooter}>
+                  <Text style={styles.yearsRangeText}>{yearRangeText}</Text>
+                  <View style={styles.actionPill}>
+                    <Text style={styles.actionPillText}>Open Exam</Text>
+                    <Icon color={card.color} name="arrow-forward" size={14} />
+                  </View>
+                </View>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
-      )}
-
-      {/* Empty State */}
-      {filteredExams.length === 0 ? (
-        <EmptyState
-          icon="document-text-outline"
-          message={
-            searchQuery.trim()
-              ? `No exams matched "${searchQuery.trim()}". Try searching for another exam title or year.`
-              : "No published exams currently available for your selection."
-          }
-          title="No exams found"
-        />
-      ) : (
-        <>
-          {/* ───────────────── BY YEAR MODE ───────────────── */}
-          {viewMode === "year" && (
-            <View>
-              {/* Year Filter Chips */}
-              {allYears.length > 1 && (
-                <ScrollView
-                  contentContainerStyle={styles.filterScroll}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                >
-                  <TouchableOpacity
-                    onPress={() => setSelectedYear("all")}
-                    style={[
-                      styles.filterChip,
-                      selectedYear === "all" && styles.filterChipActive
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterChipText,
-                        selectedYear === "all" && styles.filterChipTextActive
-                      ]}
-                    >
-                      All Years ({filteredExams.length})
-                    </Text>
-                  </TouchableOpacity>
-
-                  {allYears.map((yr) => {
-                    const count = yearGroups.find((g) => g.year === yr)?.exams.length || 0;
-                    const isActive = selectedYear === yr;
-                    return (
-                      <TouchableOpacity
-                        key={yr}
-                        onPress={() => setSelectedYear(yr)}
-                        style={[styles.filterChip, isActive && styles.filterChipActive]}
-                      >
-                        <Text
-                          style={[
-                            styles.filterChipText,
-                            isActive && styles.filterChipTextActive
-                          ]}
-                        >
-                          {yr} E.C. ({count})
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              )}
-
-              {yearGroups
-                .filter((g) => selectedYear === "all" || g.year === selectedYear)
-                .map((group) => (
-                  <View key={group.year} style={styles.sectionBlock}>
-                    <View style={styles.sectionTitleRow}>
-                      <View style={styles.sectionTitleLeft}>
-                        <Icon color={COLORS.primary} name="calendar-outline" size={16} />
-                        <Text style={styles.sectionHeading}>
-                          {group.year === "Practice"
-                            ? "General Practice Exams"
-                            : `${group.year} E.C. National Exams`}
-                        </Text>
-                      </View>
-                      <View style={styles.countBadge}>
-                        <Text style={styles.countBadgeText}>
-                          {group.exams.length} {group.exams.length === 1 ? "exam" : "exams"}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {group.exams.map((item) => renderExamCard(item, false))}
-                  </View>
-                ))}
-            </View>
-          )}
-
-          {/* ───────────────── BY EXAM TITLE MODE ───────────────── */}
-          {viewMode === "title" && (
-            <View>
-              <Text style={styles.modeNoticeText}>
-                Exams organized by Exam Title and sorted by Year (2018–2013 E.C.).
-              </Text>
-
-              {titleGroups
-                .filter((g) => selectedTitleFilter === "all" || g.title === selectedTitleFilter)
-                .map((group) => (
-                  <View key={group.title} style={styles.sectionBlock}>
-                    <View style={styles.sectionTitleRow}>
-                      <View style={styles.sectionTitleLeft}>
-                        <Icon color={COLORS.primary} name="document-text-outline" size={16} />
-                        <Text numberOfLines={1} style={styles.sectionHeading}>
-                          {group.title}
-                        </Text>
-                      </View>
-                      <View style={styles.countBadge}>
-                        <Text style={styles.countBadgeText}>{group.exams.length} yrs</Text>
-                      </View>
-                    </View>
-
-                    {group.exams.map((item) => renderExamCard(item, true))}
-                  </View>
-                ))}
-            </View>
-          )}
-
-          {/* ───────────────── ALL EXAMS MODE ───────────────── */}
-          {viewMode === "all" && (
-            <View>
-              {filteredExams
-                .slice()
-                .sort((a, b) => {
-                  const ya = Number(getYear(a)) || 0;
-                  const yb = Number(getYear(b)) || 0;
-                  if (yb !== ya) return yb - ya;
-                  return String(a.title || "").localeCompare(String(b.title || ""));
-                })
-                .map((item) => renderExamCard(item, true))}
-            </View>
-          )}
-        </>
+        </View>
       )}
     </ScrollView>
   );
@@ -569,34 +290,67 @@ export function ExamsScreen({ exams = [], onStartExam, loadingExamId, user, isPr
 
 const styles = StyleSheet.create({
   scrollWrapper: {
-    flex: 1
+    flex: 1,
+    backgroundColor: COLORS.background
   },
   container: {
     padding: SPACING.md,
-    paddingBottom: SPACING.xl * 2
+    paddingBottom: SPACING.xxl + 40
   },
-  header: {
-    fontSize: 20,
-    fontWeight: "800",
+  introHeader: {
+    marginBottom: SPACING.sm
+  },
+  screenTitle: {
+    fontSize: 24,
+    fontWeight: "900",
     color: COLORS.text,
-    marginBottom: 4
+    letterSpacing: -0.5
   },
-  subHeader: {
+  screenSubtitle: {
     fontSize: 13,
     color: COLORS.textMuted,
-    marginBottom: SPACING.md
+    lineHeight: 18,
+    marginTop: 4
   },
-  searchContainer: {
+  filterBar: {
+    flexDirection: "row",
+    gap: SPACING.xs + 2,
+    marginVertical: SPACING.sm
+  },
+  filterPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border
+  },
+  filterPillActive: {
+    backgroundColor: "#00796B",
+    borderColor: "#00796B"
+  },
+  filterPillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.textMuted
+  },
+  filterPillTextActive: {
+    color: "#FFFFFF"
+  },
+  searchBox: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
     borderWidth: 1,
+    borderColor: COLORS.border,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
-    marginBottom: SPACING.sm,
-    gap: 8,
+    height: 44,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
     ...SHADOW.sm
   },
   searchInput: {
@@ -605,318 +359,109 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     paddingVertical: 0
   },
-  clearSearchBtn: {
-    padding: 2
-  },
-  searchStatusRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.sm,
-    paddingHorizontal: 2
-  },
-  searchStatusText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textMuted
-  },
-  resetSearchLink: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: COLORS.primary
-  },
-  toggleRow: {
-    flexDirection: "row",
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: RADIUS.lg,
-    padding: 4,
-    marginBottom: SPACING.md,
-    gap: 4,
-    ...SHADOW.sm
-  },
-  toggleBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    borderRadius: RADIUS.md,
-    gap: 6
-  },
-  toggleBtnActive: {
-    backgroundColor: COLORS.primary
-  },
-  toggleBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.textMuted
-  },
-  toggleBtnTextActive: {
-    color: COLORS.onPrimary
-  },
-  filterScroll: {
-    gap: SPACING.sm,
-    paddingBottom: SPACING.md
-  },
-  filterChip: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 14,
-    paddingVertical: 7
-  },
-  filterChipActive: {
-    backgroundColor: COLORS.primaryBg,
-    borderColor: COLORS.primary
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.textMuted
-  },
-  filterChipTextActive: {
-    color: COLORS.primaryDark
-  },
-  sectionBlock: {
-    marginBottom: SPACING.lg
-  },
-  sectionTitleRow: {
+  sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: SPACING.sm
   },
-  sectionTitleLeft: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    marginRight: 8
-  },
-  sectionHeading: {
+  sectionTitle: {
     fontSize: 15,
-    fontWeight: "800",
-    color: COLORS.text,
-    flexShrink: 1
-  },
-  countBadge: {
-    backgroundColor: COLORS.surfaceAlt || "#E5E7EB",
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3
-  },
-  countBadgeText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: COLORS.primaryDark
-  },
-  chapterSubjectPill: {
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3
-  },
-  chapterSubjectPillText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: COLORS.primaryDark
-  },
-  modeNoticeText: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginBottom: SPACING.md
-  },
-  infoCard: {
-    alignItems: "center",
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
-    gap: 6
-  },
-  infoCardTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: COLORS.text,
-    marginTop: 4
-  },
-  infoCardSub: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    lineHeight: 18
-  },
-  examCard: {
-    marginBottom: SPACING.md
-  },
-  badgeRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.sm
-  },
-  badgeLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    flexWrap: "wrap",
-    flex: 1
-  },
-  accessBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.sm
-  },
-  freeBadge: {
-    backgroundColor: COLORS.successBg
-  },
-  freeBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: COLORS.success
-  },
-  premiumBadge: {
-    backgroundColor: COLORS.warningBg
-  },
-  premiumBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: COLORS.warning
-  },
-  subjectBadge: {
-    backgroundColor: COLORS.primaryBg,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.sm
-  },
-  subjectBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: COLORS.primaryDark
-  },
-  yearBadge: {
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.sm
-  },
-  yearBadgeText: {
-    fontSize: 10,
     fontWeight: "800",
     color: COLORS.text
   },
-  durationText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textMuted
+  subjectGrid: {
+    gap: SPACING.md
   },
-  title: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: COLORS.text,
-    marginBottom: 4
+  subjectCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    ...SHADOW.sm
   },
-  description: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    marginBottom: SPACING.sm,
-    lineHeight: 18
-  },
-  chapterTagRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: COLORS.primaryBg,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    marginBottom: SPACING.sm
-  },
-  chapterTagText: {
-    fontSize: 11,
-    color: COLORS.primaryDark,
-    fontWeight: "700",
-    flex: 1
-  },
-  metaRow: {
+  cardTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: SPACING.xs,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    marginTop: SPACING.xs,
-    marginBottom: SPACING.md
-  },
-  metaText: {
-    fontSize: 12,
-    color: COLORS.textMuted
-  },
-  startBtn: {
-    marginTop: 2
-  },
-  cardChaptersContainer: {
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.borderLight || "#E5E7EB",
-    borderWidth: 1,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
+    alignItems: "center",
     marginBottom: SPACING.sm
   },
-  cardChaptersTitle: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: COLORS.text,
-    marginBottom: SPACING.xs
+  subjectIconBox: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center"
   },
-  cardChaptersScroll: {
+  cardHeaderBadges: {
+    flexDirection: "row",
     gap: 6
   },
-  cardChapterBtn: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.primaryLight || "#93C5FD",
-    borderWidth: 1,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+  streamBadge: {
+    backgroundColor: "rgba(0, 121, 107, 0.1)",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: RADIUS.full
+  },
+  streamBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#00796B"
+  },
+  gradeBadge: {
+    backgroundColor: "rgba(100, 116, 139, 0.1)",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: RADIUS.full
+  },
+  gradeBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.textMuted
+  },
+  cardSubjectName: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginBottom: 6
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: SPACING.md,
+    marginBottom: SPACING.md
+  },
+  statItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4
   },
-  cardChapterBtnText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.primaryDark
+  statText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontWeight: "600"
   },
-  chapterDirectActionRow: {
+  cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: SPACING.sm,
-    paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border
+    borderTopColor: COLORS.borderLight,
+    paddingTop: SPACING.sm
   },
-  chapterDirectInfo: {
-    flex: 1,
-    marginRight: 8
-  },
-  chapterDirectCountText: {
+  yearsRangeText: {
     fontSize: 12,
-    color: COLORS.textMuted
+    fontWeight: "700",
+    color: COLORS.textSecondary || COLORS.text
   },
-  chapterDirectBtn: {
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+  actionPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5
+    gap: 4
   },
-  chapterDirectBtnText: {
-    fontSize: 11,
+  actionPillText: {
+    fontSize: 13,
     fontWeight: "800",
-    color: COLORS.onPrimary
+    color: "#00796B"
   }
 });

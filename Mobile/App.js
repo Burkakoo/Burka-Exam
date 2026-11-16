@@ -40,10 +40,9 @@ import { COLORS, RADIUS, SPACING } from "./src/utils/theme.js";
 
 const TABS = [
   { id: "home", label: "Home", icon: "home" },
-  { id: "exams", label: "Exams", icon: "document-text" },
-  { id: "notes", label: "Study Notes", icon: "book" },
+  { id: "exams", label: "Exam", icon: "document-text" },
+  { id: "notes", label: "Study Note", icon: "book" },
   { id: "ai", label: "AI Tutor", icon: "sparkles" },
-  { id: "practice", label: "Practice", icon: "flash" },
   { id: "payments", label: "Pay", icon: "card" }
 ];
 
@@ -800,49 +799,53 @@ function MainDashboard({ user, onLogout }) {
     }
   }
 
-  const renderTabBar = () => (
-    <View style={styles.tabBar}>
+  const renderBottomTabBar = () => (
+    <View style={styles.bottomTabBar}>
       {TABS.map((t) => {
-        const active = tab === t.id;
-        const isLockedTab = !isPremium && (t.id === "practice" || t.id === "notes");
+        const active = (tab === t.id && !selectedSubject) || (selectedSubject && t.id === "exams");
+        const isLockedTab = !isPremium && t.id === "notes";
         return (
           <TouchableOpacity
             accessibilityLabel={t.label}
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
+            activeOpacity={0.7}
             key={t.id}
             onPress={() => {
+              if (selectedSubject && t.id === "exams") {
+                setSelectedSubject(null);
+                return;
+              }
               setSelectedSubject(null);
               if (isLockedTab) {
                 setTab("payments");
                 setNotice({
                   type: "info",
-                  message: t.id === "notes"
-                    ? "🔒 Study Notes is a Premium feature. Upgrade to unlock comprehensive revision notes."
-                    : "🔒 Practice Mode is a Premium feature. Upgrade to unlock full practice access."
+                  message: "🔒 Study Notes is a Premium feature. Upgrade to unlock comprehensive revision notes."
                 });
                 return;
               }
               setTab(t.id);
             }}
-            style={[styles.tabItem, active && styles.activeTabItem]}
+            style={styles.bottomTabItem}
           >
-            <View style={{ position: "relative" }}>
+            <View style={styles.bottomTabIconContainer}>
               <Icon
-                color={active ? COLORS.onPrimary : isLockedTab ? COLORS.gold : COLORS.textMuted}
+                color={active ? COLORS.tealDark : isLockedTab ? COLORS.gold : COLORS.textMuted}
                 name={isLockedTab ? "lock-closed" : active ? t.icon : `${t.icon}-outline`}
-                size={18}
+                size={22}
               />
               {isLockedTab && (
-                <View style={styles.lockBadgeDot}>
-                  <Icon name="lock-closed" size={7} color="#fff" />
+                <View style={styles.bottomLockBadgeDot}>
+                  <Icon color="#fff" name="lock-closed" size={7} />
                 </View>
               )}
             </View>
             <Text
+              numberOfLines={1}
               style={[
-                styles.tabText,
-                active && styles.activeTabText,
+                styles.bottomTabText,
+                active && styles.bottomTabTextActive,
                 isLockedTab && { color: COLORS.gold, fontWeight: "800" }
               ]}
             >
@@ -857,65 +860,67 @@ function MainDashboard({ user, onLogout }) {
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       <StatusBar style="light" />
+
+      {/* Answer Feedback Mode Prompt Modal - Matches Screenshot 2 */}
       <Modal
         animationType="fade"
         transparent
         visible={Boolean(pendingExamPrompt)}
         onRequestClose={() => setPendingExamPrompt(null)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalPill}>Practice Full Exam</Text>
-            <Text style={styles.modalTitle}>When to show correct answer?</Text>
-            <Text style={styles.modalSub}>
-              Choose when you want to see correct answers and explanations for{" "}
-              {pendingExamPrompt?.examItem?.title || "this exam"}:
-            </Text>
-
-            <TouchableOpacity
-              onPress={() =>
-                handleStartExam(pendingExamPrompt.examItem, {
-                  ...pendingExamPrompt.options,
-                  showAnswerMode: "after_finishing"
-                })
-              }
-              style={[
-                styles.modeOptionBtn,
-                showAnswerMode === "after_finishing" && styles.modeOptionBtnActive
-              ]}
-            >
-              <Text style={styles.modeOptionTitle}>🏁 After finishing</Text>
-              <Text style={styles.modeOptionDesc}>
-                Answer all questions first, then see your score, correct answers, and explanations after submitting.
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setPendingExamPrompt(null)}
+          style={styles.modalBackdrop}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.modalCardPink}>
+            {/* Hot pink header matching Screenshot 2 */}
+            <View style={styles.modalPinkHeader}>
+              <Text style={styles.modalPinkHeaderTitle}>
+                When to show correct answer
               </Text>
-            </TouchableOpacity>
+            </View>
 
-            <TouchableOpacity
-              onPress={() =>
-                handleStartExam(pendingExamPrompt.examItem, {
-                  ...pendingExamPrompt.options,
-                  showAnswerMode: "right_away"
-                })
-              }
-              style={[
-                styles.modeOptionBtn,
-                showAnswerMode === "right_away" && styles.modeOptionBtnActive
-              ]}
-            >
-              <Text style={styles.modeOptionTitle}>⚡ Right away</Text>
-              <Text style={styles.modeOptionDesc}>
-                Reveal the correct answer and detailed explanation immediately as soon as you select an option.
-              </Text>
-            </TouchableOpacity>
+            {/* Radio options body matching Screenshot 2 */}
+            <View style={styles.modalRadioBody}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() =>
+                  handleStartExam(pendingExamPrompt?.examItem, {
+                    ...pendingExamPrompt?.options,
+                    showAnswerMode: "after_finishing"
+                  })
+                }
+                style={styles.modalRadioRow}
+              >
+                <View style={styles.modalRadioCircle}>
+                  {showAnswerMode === "after_finishing" && (
+                    <View style={styles.modalRadioDot} />
+                  )}
+                </View>
+                <Text style={styles.modalRadioLabel}>After finishing</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => setPendingExamPrompt(null)}
-              style={styles.modalCancelBtn}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() =>
+                  handleStartExam(pendingExamPrompt?.examItem, {
+                    ...pendingExamPrompt?.options,
+                    showAnswerMode: "right_away"
+                  })
+                }
+                style={styles.modalRadioRow}
+              >
+                <View style={styles.modalRadioCircle}>
+                  {showAnswerMode === "right_away" && (
+                    <View style={styles.modalRadioDot} />
+                  )}
+                </View>
+                <Text style={styles.modalRadioLabel}>Right away</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Right-Side Profile Navigation Drawer */}
@@ -932,7 +937,7 @@ function MainDashboard({ user, onLogout }) {
         visible={profileDrawerOpen}
       />
 
-      {/* 1. ACTIVE EXAM SESSION (Full-Screen) */}
+      {/* 1. ACTIVE EXAM SESSION (Full-Screen Immersive) */}
       {activeExamSession ? (
         <View style={styles.flexContainer}>
           <ExamActiveScreen
@@ -945,136 +950,123 @@ function MainDashboard({ user, onLogout }) {
             submitting={submittingExam}
           />
         </View>
-      ) : selectedSubject ? (
-        /* 2. SUBJECT CHAPTERS & PRACTICE (Full-Screen) */
-        <View style={styles.flexContainer}>
-          <SubjectScreen
-            exams={exams}
-            isPremium={isPremium}
-            loadingExamId={loadingExamId}
-            notice={notice}
-            onAskAi={handleAskAi}
-            onBack={() => setSelectedSubject(null)}
-            onNavigatePayments={() => {
-              setSelectedSubject(null);
-              setTab("payments");
-            }}
-            onStartExam={handlePromptStartExam}
-            subject={selectedSubject}
-            subjects={subjects}
-            user={currentUser}
-          />
-        </View>
-      ) : tab === "home" ? (
-        /* 3. HOME SCREEN (With Top Header & Top Navigation Bar) */
-        <ScrollView contentContainerStyle={styles.container}>
-          <Header
-            onLogout={onLogout}
-            onNavigateProfile={() => setProfileDrawerOpen(true)}
-            queueCount={queueCount}
-            user={currentUser}
-          />
-
-          <Notice message={notice?.message} type={notice?.type} />
-
-          {renderTabBar()}
-
-          {dashboardLoading ? (
-            <View accessibilityLabel="Loading content">
-              <SkeletonCard lines={2} />
-              <SkeletonCard lines={3} />
-              <SkeletonCard lines={2} />
-            </View>
-          ) : (
-            <HomeScreen
-              onSelectSubject={setSelectedSubject}
-              subjects={subjects}
-              user={currentUser}
-            />
-          )}
-        </ScrollView>
       ) : (
-        /* 4. FULL-SCREEN SCREENS (Exams, Study Notes, AI Tutor, Practice, Pay) - Top Bar Hidden */
+        /* 2. APP MAIN SHELL WITH PERSISTENT BOTTOM NAVIGATION */
         <View style={styles.flexContainer}>
-          {!(tab === "practice" && isPracticeActive) &&
-            renderFullScreenBar(
-              tab === "exams"
-                ? "Exams & Past Papers"
-                : tab === "notes"
-                ? "Study Notes"
-                : tab === "ai"
-                ? "AI Tutor"
-                : tab === "practice"
-                ? "Practice Mode"
-                : "Subscription & Pay"
-            )}
-
-          {notice && (
-            <View style={{ paddingHorizontal: SPACING.md, paddingTop: SPACING.xs }}>
-              <Notice message={notice?.message} type={notice?.type} />
-            </View>
-          )}
-
           <View style={{ flex: 1 }}>
-            {tab === "exams" && (
-              <ExamsScreen
+            {selectedSubject ? (
+              /* Dedicated Subject Exam Screen (Screenshot 3 & 4) */
+              <SubjectScreen
                 exams={exams}
                 isPremium={isPremium}
                 loadingExamId={loadingExamId}
-                onNavigatePayments={() => setTab("payments")}
-                onStartExam={handlePromptStartExam}
-                user={currentUser}
-              />
-            )}
-
-            {tab === "notes" && (
-              <NotesScreen
-                isPremium={isPremium}
+                notice={notice}
                 notes={notes}
                 onAskAi={handleAskAi}
-                onNavigatePayments={() => setTab("payments")}
-                onSaveNote={handleSaveNote}
-                saving={savingNote}
+                onBack={() => setSelectedSubject(null)}
+                onNavigatePayments={() => {
+                  setSelectedSubject(null);
+                  setTab("payments");
+                }}
+                onStartExam={handlePromptStartExam}
+                progress={progress}
+                subject={selectedSubject}
                 subjects={subjects}
                 user={currentUser}
               />
-            )}
+            ) : tab === "home" ? (
+              /* Home Screen */
+              <ScrollView contentContainerStyle={styles.container}>
+                <Header
+                  onLogout={onLogout}
+                  onNavigateProfile={() => setProfileDrawerOpen(true)}
+                  queueCount={queueCount}
+                  user={currentUser}
+                />
 
-            {tab === "ai" && (
-              <ChatTutorScreen
-                initialContext={aiContext}
-                onClearContext={() => setAiContext(null)}
-                user={currentUser}
-              />
-            )}
+                <Notice message={notice?.message} type={notice?.type} />
 
-            {tab === "practice" && (
-              <PracticeModeScreen
-                exams={exams}
-                isPremium={isPremium}
-                onAskAi={handleAskAi}
-                onNavigatePayments={() => setTab("payments")}
-                onSaveProgress={handleSaveProgress}
-                onSessionActiveChange={setIsPracticeActive}
-                subjects={subjects}
-                user={currentUser}
-              />
-            )}
+                {dashboardLoading ? (
+                  <View accessibilityLabel="Loading content">
+                    <SkeletonCard lines={2} />
+                    <SkeletonCard lines={3} />
+                    <SkeletonCard lines={2} />
+                  </View>
+                ) : (
+                  <HomeScreen
+                    onSelectSubject={(subj) => {
+                      setSelectedSubject(subj);
+                      setTab("exams");
+                    }}
+                    subjects={subjects}
+                    user={currentUser}
+                  />
+                )}
+              </ScrollView>
+            ) : (
+              /* Other Tabs: Exam, Study Notes, AI Tutor, Pay */
+              <View style={styles.flexContainer}>
+                {notice && (
+                  <View style={{ paddingHorizontal: SPACING.md, paddingTop: SPACING.xs }}>
+                    <Notice message={notice?.message} type={notice?.type} />
+                  </View>
+                )}
 
-            {tab === "payments" && (
-              <PaymentScreen
-                onSubmitPayment={handleSubmitPayment}
-                payments={payments}
-                submitting={submittingPayment}
-                user={currentUser}
-              />
+                <View style={{ flex: 1 }}>
+                  {tab === "exams" && (
+                    <ExamsScreen
+                      exams={exams}
+                      isPremium={isPremium}
+                      loadingExamId={loadingExamId}
+                      onNavigatePayments={() => setTab("payments")}
+                      onSelectSubject={(subj) => setSelectedSubject(subj)}
+                      onStartExam={handlePromptStartExam}
+                      subjects={subjects}
+                      user={currentUser}
+                    />
+                  )}
+
+                  {tab === "notes" && (
+                    <NotesScreen
+                      isPremium={isPremium}
+                      notes={notes}
+                      onAskAi={handleAskAi}
+                      onNavigatePayments={() => setTab("payments")}
+                      onSaveNote={handleSaveNote}
+                      saving={savingNote}
+                      subjects={subjects}
+                      user={currentUser}
+                    />
+                  )}
+
+                  {tab === "ai" && (
+                    <ChatTutorScreen
+                      initialContext={aiContext}
+                      onClearContext={() => setAiContext(null)}
+                      user={currentUser}
+                    />
+                  )}
+
+                  {tab === "payments" && (
+                    <PaymentScreen
+                      onSubmitPayment={handleSubmitPayment}
+                      payments={payments}
+                      submitting={submittingPayment}
+                      user={currentUser}
+                    />
+                  )}
+                </View>
+              </View>
             )}
           </View>
+
+          {/* Fixed Bottom Navigation Bar */}
+          {renderBottomTabBar()}
         </View>
       )}
-      </SafeAreaView>
+    </SafeAreaView>
   );
-}
+}}
 
 class ErrorBoundary extends React.Component {
   state = { hasError: false, error: null, showDetails: false };
@@ -1371,4 +1363,109 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   }
+
+  bottomTabBar: {
+    flexDirection: "row",
+    backgroundColor: COLORS.surface,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === "ios" ? 22 : 8,
+    paddingHorizontal: 4,
+    justifyContent: "space-around",
+    alignItems: "center",
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 5
+  },
+  bottomTabItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 2
+  },
+  bottomTabIconContainer: {
+    position: "relative",
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2
+  },
+  bottomLockBadgeDot: {
+    position: "absolute",
+    top: -2,
+    right: -4,
+    backgroundColor: COLORS.gold,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  bottomTabText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.textMuted
+  },
+  bottomTabTextActive: {
+    fontWeight: "800",
+    color: COLORS.tealDark
+  },
+  modalCardPink: {
+    width: "100%",
+    maxWidth: 320,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    overflow: "hidden",
+    elevation: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10
+  },
+  modalPinkHeader: {
+    backgroundColor: "#E91E63", // Hot pink banner matching Screenshot 2
+    paddingVertical: 14,
+    paddingHorizontal: 16
+  },
+  modalPinkHeaderTitle: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: -0.2
+  },
+  modalRadioBody: {
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    gap: 16
+  },
+  modalRadioRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 6
+  },
+  modalRadioCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: "#64748B",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  modalRadioDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#E91E63"
+  },
+  modalRadioLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1E293B"
+  },
 });

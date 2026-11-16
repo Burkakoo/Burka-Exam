@@ -291,6 +291,31 @@ export function ExamActiveScreen({
   const [selectedYearFilter, setSelectedYearFilter] = useState("all");
   const [selectedTopicFilter, setSelectedTopicFilter] = useState("all");
   const [zoomedUri, setZoomedUri] = useState(null);
+  const durationMinutes = Number(examData?.exam?.durationMinutes) || 110;
+  const [secondsRemaining, setSecondsRemaining] = useState(durationMinutes * 60);
+  const [menuModalVisible, setMenuModalVisible] = useState(false);
+  const scrollRef = React.useRef(null);
+
+  useEffect(() => {
+    if (result) return;
+    const interval = setInterval(() => {
+      setSecondsRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [result]);
+
+  function formatTime(totalSec) {
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
 
   useEffect(() => {
     // 1. Load from AsyncStorage
@@ -497,29 +522,10 @@ export function ExamActiveScreen({
 
     return (
       <Card key={question._id || question.originalIndex} style={styles.questionCard}>
-        <View style={styles.questionHeader}>
-          <View style={styles.headerLeft}>
-            <View style={styles.qNumBadge}>
-              <Text style={styles.qNumText}>Q{question.originalIndex}</Text>
-            </View>
-            <View style={styles.yearTagPill}>
-              <Text style={styles.yearTagPillText}>{question.resolvedYear} E.C.</Text>
-            </View>
-            {question.resolvedGrade ? (
-              <View style={styles.gradeTagPill}>
-                <Text style={styles.gradeTagPillText}>{question.resolvedGrade}</Text>
-              </View>
-            ) : null}
-            {question.resolvedTopic ? (
-              <View style={styles.chapterTagPill}>
-                <Text numberOfLines={1} style={styles.chapterTagPillText}>
-                  {question.resolvedTopic}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+        <View style={styles.screenshotQHeader}>
+          <Text style={styles.screenshotQNum}>{question.originalIndex}</Text>
 
-          <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             {onAskAi && (
               <TouchableOpacity
                 onPress={() => onAskAi({
@@ -531,23 +537,21 @@ export function ExamActiveScreen({
                   examYear: question.resolvedYear,
                   gradeLevel: question.gradeLevel
                 })}
-                style={styles.askAiBtn}
+                style={styles.screenshotImproveBtn}
               >
-                <Icon color={COLORS.primary} name="sparkles" size={13} />
-                <Text style={styles.askAiBtnText}>Ask AI</Text>
+                <Text style={styles.screenshotImproveText}>Improve</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
               onPress={() => toggleFavorite(question)}
-              style={[styles.favBtn, isFav && styles.favBtnActive]}
+              style={styles.screenshotFavIcon}
             >
-              <Icon color={COLORS.gold} name={isFav ? "star" : "star-outline"} size={14} />
-              <Text style={[styles.favBtnText, isFav && styles.favBtnTextActive]}>
-                {isFav ? "Saved" : "Save"}
-              </Text>
+              <Icon color={isFav ? COLORS.gold : "#94A3B8"} name={isFav ? "star" : "star-outline"} size={18} />
             </TouchableOpacity>
           </View>
         </View>
+
+        <View style={styles.screenshotHairline} />
 
         {question.showFeedback && (
           <View
@@ -741,17 +745,102 @@ export function ExamActiveScreen({
           </View>
         </View>
       </Modal>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={onExit} style={styles.exitBtn}>
-          <Icon color={COLORS.danger} name="close" size={16} />
-          <Text style={styles.exitText}>Exit Exam</Text>
-        </TouchableOpacity>
-        <Text style={styles.progressCounter}>
-          {answeredCount}/{questions.length} Answered
-        </Text>
+      {/* ── TOP TEAL APP BAR (Screenshot 1) ── */}
+      <View style={styles.screenshotTopTealBar}>
+        <View style={styles.screenshotTimerBox}>
+          <Text style={styles.screenshotTimerText}>{formatTime(secondsRemaining)}</Text>
+        </View>
+
+        <View style={styles.screenshotTopRightIcons}>
+          <TouchableOpacity
+            accessibilityLabel="Stopwatch"
+            onPress={() => {}}
+            style={styles.screenshotIconButton}
+          >
+            <Icon color="#FFFFFF" name="timer-outline" size={24} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityLabel="Next Question"
+            onPress={() => {
+              if (scrollRef.current) {
+                scrollRef.current.scrollTo({ y: 500, animated: true });
+              }
+            }}
+            style={styles.screenshotIconButton}
+          >
+            <Icon color="#FFFFFF" name="chevron-forward" size={24} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityLabel="Exam Menu"
+            onPress={() => setMenuModalVisible(true)}
+            style={styles.screenshotIconButton}
+          >
+            <Icon color="#FFFFFF" name="ellipsis-vertical" size={22} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
+      {/* Action Menu Modal */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={menuModalVisible}
+        onRequestClose={() => setMenuModalVisible(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setMenuModalVisible(false)}
+          style={styles.menuModalBackdrop}
+        >
+          <View style={styles.menuModalCard}>
+            <Text style={styles.menuModalTitle}>Examination Menu</Text>
+
+            <TouchableOpacity
+              onPress={() => {
+                setMenuModalVisible(false);
+                handleSubmit();
+              }}
+              style={styles.menuModalItem}
+            >
+              <Icon color={COLORS.tealDark} name="checkmark-done-circle-outline" size={20} />
+              <Text style={styles.menuModalItemText}>
+                Finish & Submit ({answeredCount}/{questions.length} answered)
+              </Text>
+            </TouchableOpacity>
+
+            {onChangeShowAnswerMode && (
+              <TouchableOpacity
+                onPress={() => {
+                  onChangeShowAnswerMode(showAnswerMode === "after_finishing" ? "right_away" : "after_finishing");
+                }}
+                style={styles.menuModalItem}
+              >
+                <Icon color="#6366F1" name="eye-outline" size={20} />
+                <Text style={styles.menuModalItemText}>
+                  Show Answer: {showAnswerMode === "after_finishing" ? "After Finishing" : "Right Away"}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              onPress={() => {
+                setMenuModalVisible(false);
+                onExit();
+              }}
+              style={[styles.menuModalItem, { borderBottomWidth: 0 }]}
+            >
+              <Icon color={COLORS.danger} name="exit-outline" size={20} />
+              <Text style={[styles.menuModalItemText, { color: COLORS.danger }]}>
+                Exit Exam
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <ScrollView ref={scrollRef} style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
       <Text style={styles.examTitle}>{exam?.title || "Active Examination"}</Text>
 
       {!result && onChangeShowAnswerMode ? (
@@ -1476,4 +1565,106 @@ const styles = StyleSheet.create({
   activeReviewFilterText: {
     color: COLORS.onPrimary
   }
+
+  screenshotTopTealBar: {
+    backgroundColor: "#00796B", // Dark teal matching Screenshot 1
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4
+  },
+  screenshotTimerBox: {
+    flexDirection: "row",
+    alignItems: "center"
+  },
+  screenshotTimerText: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: 0.5
+  },
+  screenshotTopRightIcons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16
+  },
+  screenshotIconButton: {
+    padding: 4
+  },
+  screenshotQHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4
+  },
+  screenshotQNum: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#334155"
+  },
+  screenshotImproveBtn: {
+    paddingVertical: 2,
+    paddingHorizontal: 4
+  },
+  screenshotImproveText: {
+    fontSize: 14,
+    color: "#64748B",
+    fontWeight: "600"
+  },
+  screenshotFavIcon: {
+    padding: 2
+  },
+  screenshotHairline: {
+    height: 1,
+    backgroundColor: "#E2E8F0",
+    marginVertical: 8
+  },
+  menuModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20
+  },
+  menuModalCard: {
+    width: "100%",
+    maxWidth: 320,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6
+  },
+  menuModalTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    paddingBottom: 8
+  },
+  menuModalItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9"
+  },
+  menuModalItemText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#334155",
+    flex: 1
+  },
 });
