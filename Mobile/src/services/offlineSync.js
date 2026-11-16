@@ -12,8 +12,34 @@ export async function getOfflineSyncStatus() {
   }
 }
 
+/**
+ * Purge legacy/redundant cache keys from earlier app builds
+ * (e.g. hundreds of duplicate cached_exam_session_* keys and per-grade practice keys)
+ * to prevent SQLite storage bloat / SQLITE_FULL errors.
+ */
+export async function purgeLegacyCacheKeys() {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const obsoleteKeys = (allKeys || []).filter((k) =>
+      k.startsWith("@ethioprep_cached_exam_session_") ||
+      (k.startsWith("@ethioprep_cached_practice_qs_") && !k.endsWith("_all"))
+    );
+    if (obsoleteKeys.length > 0) {
+      await AsyncStorage.multiRemove(obsoleteKeys);
+      console.log(`[OfflineSync] Purged ${obsoleteKeys.length} legacy redundant cache keys.`);
+    }
+  } catch (err) {
+    console.warn("[OfflineSync] Could not purge legacy cache keys:", err?.message);
+  }
+}
+
 export async function downloadOfflineBundle(userStream = "all", onProgress) {
   try {
+    if (onProgress) onProgress("Preparing offline storage...");
+
+    // Clean up any old duplicate keys to free space before caching
+    await purgeLegacyCacheKeys();
+
     if (onProgress) onProgress("Connecting to server...");
 
     // Request full bundle (all streams: Natural, Social, and Both across Grades 9–12)
@@ -34,7 +60,7 @@ export async function downloadOfflineBundle(userStream = "all", onProgress) {
       await AsyncStorage.setItem(
         "@ethioprep_cached_subjects",
         JSON.stringify(bundle.subjects)
-      ).catch(() => {});
+      );
     }
 
     // 2. Save Exams (with populated chapterBreakdown, accessLevel, etc.)
@@ -42,7 +68,7 @@ export async function downloadOfflineBundle(userStream = "all", onProgress) {
       await AsyncStorage.setItem(
         "@ethioprep_cached_exams",
         JSON.stringify(bundle.exams)
-      ).catch(() => {});
+      );
     }
 
     // 3. Save Notes (Study notes across subjects)
@@ -50,7 +76,7 @@ export async function downloadOfflineBundle(userStream = "all", onProgress) {
       await AsyncStorage.setItem(
         "@ethioprep_cached_notes",
         JSON.stringify(bundle.notes)
-      ).catch(() => {});
+      );
     }
 
     // 4. Map chapters by subject and save
@@ -66,7 +92,7 @@ export async function downloadOfflineBundle(userStream = "all", onProgress) {
           await AsyncStorage.setItem(
             `@ethioprep_cached_chapters_${sId}`,
             JSON.stringify(chs)
-          ).catch(() => {});
+          );
         }
       }
     }
@@ -99,101 +125,29 @@ export async function downloadOfflineBundle(userStream = "all", onProgress) {
       }
     }
 
-    // 6. Save per-exam caches & pre-cache ready exam sessions (Full & per-chapter!)
-    for (const exam of bundle.exams) {
-      const eId = String(exam._id);
-      const examQuestions = questionsByExam.get(eId) || [];
-      if (examQuestions.length > 0) {
+    // 6. Save per-exam caches (authoritative source for each exam & its chapter questions)
+    if (onProgress) {
+      onProgress(`Caching ${questionsByExam.size} exams offline...`);
+    }
+    for (const [eId, examQuestions] of questionsByExam.entries()) {
+      if (eId && examQuestions.length > 0) {
         await AsyncStorage.setItem(
           `@ethioprep_exam_cache_${eId}`,
           JSON.stringify(examQuestions)
-        ).catch(() => {});
-
-        // Full exam session
-        const fullSession = {
-          attempt: {
-            _id: `offline_seed_${eId}`,
-            examId: eId,
-            status: "in_progress",
-            isOffline: true
-          },
-          exam: {
-            ...exam,
-            questions: examQuestions
-          }
-        };
-        await AsyncStorage.setItem(
-          `@ethioprep_cached_exam_session_${eId}_all`,
-          JSON.stringify(fullSession)
-        ).catch(() => {});
-
-        // Pre-cache each chapter practice session for this exam!
-        if (Array.isArray(exam.chapterBreakdown)) {
-          for (const ch of exam.chapterBreakdown) {
-            const chId = String(ch.chapterId || ch.id || "");
-            if (chId) {
-              const chQuestions = examQuestions.filter(
-                (q) => String(q.chapterId) === chId
-              );
-              if (chQuestions.length > 0) {
-                const chSession = {
-                  attempt: {
-                    _id: `offline_seed_${eId}_${chId}`,
-                    examId: eId,
-                    chapterId: chId,
-                    status: "in_progress",
-                    isOffline: true
-                  },
-                  exam: {
-                    ...exam,
-                    title: `${exam.title} • ${ch.title}`,
-                    chapterName: ch.title,
-                    chapterId: chId,
-                    questions: chQuestions
-                  }
-                };
-                await AsyncStorage.setItem(
-                  `@ethioprep_cached_exam_session_${eId}_${chId}`,
-                  JSON.stringify(chSession)
-                ).catch(() => {});
-                await AsyncStorage.setItem(
-                  `@ethioprep_cached_exam_session_${eId}_${chId}_all`,
-                  JSON.stringify(chSession)
-                ).catch(() => {});
-              }
-            }
-          }
-        }
+        );
       }
     }
 
-    // 7. Save per-subject practice questions (all & per grade)
+    // 7. Save per-subject practice questions (single key per subject for Practice Mode)
+    if (onProgress) {
+      onProgress(`Caching curriculum practice questions for ${questionsBySubject.size} subjects...`);
+    }
     for (const [sId, sQuestions] of questionsBySubject.entries()) {
       if (sId && sQuestions.length > 0) {
         await AsyncStorage.setItem(
           `@ethioprep_cached_practice_qs_${sId}_all`,
           JSON.stringify(sQuestions)
-        ).catch(() => {});
-
-        // Group by grade level for PracticeMode
-        const byGrade = new Map();
-        sQuestions.forEach((q) => {
-          const g = String(q.gradeLevel || "grade-12").toLowerCase();
-          const gNum = g.replace(/^grade-?/i, "");
-          if (!byGrade.has(gNum)) byGrade.set(gNum, []);
-          byGrade.get(gNum).push(q);
-        });
-
-        for (const [gNum, gQs] of byGrade.entries()) {
-          await AsyncStorage.setItem(
-            `@ethioprep_cached_practice_qs_${sId}_${gNum}`,
-            JSON.stringify(gQs)
-          ).catch(() => {});
-          await AsyncStorage.setItem(
-            `@ethioprep_cached_practice_qs_${sId}_grade-${gNum}`,
-            JSON.stringify(gQs)
-          ).catch(() => {});
-        }
+        );
       }
     }
 

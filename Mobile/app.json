@@ -10,7 +10,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "android": {
-      "versionCode": 18,
+      "versionCode": 19,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE"
@@ -29,6 +29,7 @@
       }
     },
     "plugins": [
+      "./plugins/withAsyncStorageSize.js",
       [
         "expo-build-properties",
         {

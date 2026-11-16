@@ -34,6 +34,14 @@ export function getFriendlyErrorMessage(error, defaultMessage = "An unexpected e
     return "Unable to connect to the server. Please check your internet connection.";
   }
 
+  if (
+    lower.includes("sqlite_full") ||
+    lower.includes("disk is full") ||
+    lower.includes("code 13")
+  ) {
+    return "Device storage limit reached. Redundant cache is being cleaned. Please try again.";
+  }
+
   // 2. Hide technical server leaks, hostnames, stack traces, and database errors
   if (
     lower.includes("onrender.com") ||
@@ -62,6 +70,36 @@ export function getFriendlyErrorMessage(error, defaultMessage = "An unexpected e
   return rawMsg;
 }
 
+export async function safeSetItem(key, value) {
+  try {
+    await AsyncStorage.setItem(key, value);
+  } catch (err) {
+    const msg = String(err?.message || "");
+    if (
+      msg.includes("SQLITE_FULL") ||
+      msg.includes("disk is full") ||
+      msg.includes("code 13")
+    ) {
+      console.warn("[Storage] SQLITE_FULL detected during safeSetItem. Purging legacy cache keys and retrying...", key);
+      try {
+        const allKeys = await AsyncStorage.getAllKeys();
+        const obsoleteKeys = (allKeys || []).filter((k) =>
+          k.startsWith("@ethioprep_cached_exam_session_") ||
+          (k.startsWith("@ethioprep_cached_practice_qs_") && !k.endsWith("_all"))
+        );
+        if (obsoleteKeys.length > 0) {
+          await AsyncStorage.multiRemove(obsoleteKeys);
+        }
+      } catch (purgeErr) {
+        console.warn("[Storage] Failed to purge legacy keys:", purgeErr?.message);
+      }
+      await AsyncStorage.setItem(key, value);
+    } else {
+      throw err;
+    }
+  }
+}
+
 async function tryRefreshAccessToken() {
   if (refreshPromise) {
     return refreshPromise;
@@ -87,9 +125,9 @@ async function tryRefreshAccessToken() {
 
       const data = await response.json().catch(() => ({}));
       if (data.accessToken) {
-        await AsyncStorage.setItem("ethioprep_token", data.accessToken);
+        await safeSetItem("ethioprep_token", data.accessToken);
         if (data.refreshToken) {
-          await AsyncStorage.setItem("ethioprep_refresh_token", data.refreshToken);
+          await safeSetItem("ethioprep_refresh_token", data.refreshToken);
         }
         return data.accessToken;
       }
@@ -155,7 +193,7 @@ export async function login(email, password) {
     await AsyncStorage.setItem("ethioprep_refresh_token", result.refreshToken);
   }
   if (result.user) {
-    await AsyncStorage.setItem("ethioprep_user", JSON.stringify(result.user));
+    await safeSetItem("ethioprep_user", JSON.stringify(result.user));
   }
   return result;
 }
@@ -181,7 +219,7 @@ export async function verifyEmail(email, otp) {
     await AsyncStorage.setItem("ethioprep_refresh_token", result.refreshToken);
   }
   if (result.user) {
-    await AsyncStorage.setItem("ethioprep_user", JSON.stringify(result.user));
+    await safeSetItem("ethioprep_user", JSON.stringify(result.user));
   }
   return result;
 }

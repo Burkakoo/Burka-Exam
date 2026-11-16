@@ -34,6 +34,7 @@ import {
   requestWithOfflineQueue
 } from "./src/services/api.js";
 import { getQueue, queueMutation, syncQueuedMutations } from "./src/services/offlineQueue.js";
+import { purgeLegacyCacheKeys } from "./src/services/offlineSync.js";
 import { isUserPremium } from "./src/utils/auth.js";
 import { COLORS, RADIUS, SPACING } from "./src/utils/theme.js";
 
@@ -182,6 +183,7 @@ function MainDashboard({ user, onLogout }) {
   }
 
   useEffect(() => {
+    purgeLegacyCacheKeys();
     loadCachedData();
     loadDashboardData();
     flushOfflineQueue();
