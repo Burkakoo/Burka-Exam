@@ -1066,7 +1066,7 @@ function MainDashboard({ user, onLogout }) {
       )}
     </SafeAreaView>
   );
-}}
+}
 
 class ErrorBoundary extends React.Component {
   state = { hasError: false, error: null, showDetails: false };
@@ -1362,7 +1362,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center"
-  }
+  },
 
   bottomTabBar: {
     flexDirection: "row",

@@ -1564,7 +1564,7 @@ const styles = StyleSheet.create({
   },
   activeReviewFilterText: {
     color: COLORS.onPrimary
-  }
+  },
 
   screenshotTopTealBar: {
     backgroundColor: "#00796B", // Dark teal matching Screenshot 1
