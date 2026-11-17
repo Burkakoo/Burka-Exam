@@ -1,4 +1,11 @@
 node_modules/
 .expo/
+dist/
 *.apk
-
+*.aab
+*.map
+*.test.js
+__tests__/
+android/
+ios/
+.git/
