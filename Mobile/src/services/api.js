@@ -93,9 +93,13 @@ export async function safeSetItem(key, value) {
       } catch (purgeErr) {
         console.warn("[Storage] Failed to purge legacy keys:", purgeErr?.message);
       }
-      await AsyncStorage.setItem(key, value);
+      try {
+        await AsyncStorage.setItem(key, value);
+      } catch (retryErr) {
+        console.warn("[Storage] Retry setItem failed:", retryErr?.message);
+      }
     } else {
-      throw err;
+      console.warn("[Storage] safeSetItem error for key:", key, err?.message);
     }
   }
 }
@@ -187,10 +191,10 @@ export async function login(email, password) {
     body: JSON.stringify({ email, password })
   });
   if (result.accessToken) {
-    await AsyncStorage.setItem("ethioprep_token", result.accessToken);
+    await safeSetItem("ethioprep_token", result.accessToken);
   }
   if (result.refreshToken) {
-    await AsyncStorage.setItem("ethioprep_refresh_token", result.refreshToken);
+    await safeSetItem("ethioprep_refresh_token", result.refreshToken);
   }
   if (result.user) {
     await safeSetItem("ethioprep_user", JSON.stringify(result.user));
@@ -213,10 +217,10 @@ export async function verifyEmail(email, otp) {
     body: JSON.stringify({ email, otp })
   });
   if (result.accessToken) {
-    await AsyncStorage.setItem("ethioprep_token", result.accessToken);
+    await safeSetItem("ethioprep_token", result.accessToken);
   }
   if (result.refreshToken) {
-    await AsyncStorage.setItem("ethioprep_refresh_token", result.refreshToken);
+    await safeSetItem("ethioprep_refresh_token", result.refreshToken);
   }
   if (result.user) {
     await safeSetItem("ethioprep_user", JSON.stringify(result.user));

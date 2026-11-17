@@ -17,15 +17,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Prevent release crashes from unhandled errors / promise rejections on Android
 if (typeof global !== "undefined" && global.ErrorUtils) {
-  const previousHandler = global.ErrorUtils.getGlobalHandler && global.ErrorUtils.getGlobalHandler();
   global.ErrorUtils.setGlobalHandler((error, isFatal) => {
-    console.warn("[GlobalErrorHandler] Intercepted:", error?.message || error, "fatal:", isFatal);
-    if (previousHandler) {
-      try {
-        // Report as non-fatal so native Android bridge does not finish the Activity
-        previousHandler(error, false);
-      } catch {}
-    }
+    console.warn("[GlobalErrorHandler] Intercepted unhandled error:", error?.message || error, "fatal:", isFatal);
+    // In production, do NOT delegate to NativeExceptionsManager, which terminates the Android process.
+    // Absorbing unhandled JS exceptions keeps the Android Activity running smoothly.
   });
 }
 
@@ -46,7 +41,8 @@ import { ProfileScreen } from "./src/screens/ProfileScreen.js";
 import { ChatTutorScreen } from "./src/screens/ChatTutorScreen.js";
 import {
   request,
-  requestWithOfflineQueue
+  requestWithOfflineQueue,
+  safeSetItem
 } from "./src/services/api.js";
 import { getQueue, queueMutation, syncQueuedMutations } from "./src/services/offlineQueue.js";
 import { purgeLegacyCacheKeys } from "./src/services/offlineSync.js";
@@ -201,12 +197,6 @@ function MainDashboard({ user, onLogout }) {
     loadDashboardData().catch(() => {});
     flushOfflineQueue().catch(() => {});
     refreshQueue().catch(() => {});
-
-    // Defer legacy cache cleanup to background idle time so it never blocks or slows startup
-    const timer = setTimeout(() => {
-      purgeLegacyCacheKeys().catch(() => {});
-    }, 4000);
-    return () => clearTimeout(timer);
   }, []);
 
   async function loadCachedData() {
@@ -271,26 +261,39 @@ function MainDashboard({ user, onLogout }) {
       ]);
 
       if (subjRes.status === "fulfilled") {
-        const s = subjRes.value.subjects || [];
+        const s = subjRes.value?.subjects || [];
         setSubjects(s);
-        AsyncStorage.setItem("@ethioprep_cached_subjects", JSON.stringify(s)).catch(() => {});
+        safeSetItem("@ethioprep_cached_subjects", JSON.stringify(s));
       }
       if (examsRes.status === "fulfilled") {
-        const e = examsRes.value.exams || [];
+        const e = examsRes.value?.exams || [];
         setExams(e);
-        AsyncStorage.setItem("@ethioprep_cached_exams", JSON.stringify(e)).catch(() => {});
+        // Optimize cache: strip massive questionIds arrays to keep local storage lightweight & safe
+        const slimExams = e.map((x) => ({
+          _id: x._id,
+          title: x.title,
+          examYear: x.examYear,
+          year: x.year,
+          subjectId: x.subjectId,
+          accessLevel: x.accessLevel,
+          durationMinutes: x.durationMinutes,
+          chapterBreakdown: x.chapterBreakdown,
+          questionCount: Array.isArray(x.questionIds) ? x.questionIds.length : (x.questionCount || 0),
+          questionIds: []
+        }));
+        safeSetItem("@ethioprep_cached_exams", JSON.stringify(slimExams));
       }
       if (notesRes.status === "fulfilled") {
-        const n = notesRes.value.notes || [];
+        const n = notesRes.value?.notes || [];
         setNotes(n);
-        AsyncStorage.setItem("@ethioprep_cached_notes", JSON.stringify(n)).catch(() => {});
+        safeSetItem("@ethioprep_cached_notes", JSON.stringify(n));
       }
-      if (progRes.status === "fulfilled") setProgress(progRes.value.progress || []);
-      if (payRes.status === "fulfilled") setPayments(payRes.value.payments || []);
+      if (progRes.status === "fulfilled") setProgress(progRes.value?.progress || []);
+      if (payRes.status === "fulfilled") setPayments(payRes.value?.payments || []);
       if (profileRes?.status === "fulfilled" && profileRes.value?.user) {
         const u = profileRes.value.user;
         setCurrentUser(u);
-        AsyncStorage.setItem("ethioprep_user", JSON.stringify(u)).catch(() => {});
+        safeSetItem("ethioprep_user", JSON.stringify(u));
       }
     } catch (error) {
       setNotice({ type: "error", message: "Failed to sync remote data. Offline cache active." });
@@ -1167,6 +1170,13 @@ class ErrorBoundary extends React.Component {
 // Proactively probe and self-heal storage if SQLite is corrupted / full from earlier builds
 async function verifyStorageHealth() {
   try {
+    const v = await AsyncStorage.getItem("@burka_storage_v23_init").catch(() => null);
+    if (!v) {
+      console.log("[Storage] Initializing v23 clean storage...");
+      await AsyncStorage.clear().catch(() => {});
+      await AsyncStorage.setItem("@burka_storage_v23_init", "1").catch(() => {});
+      return;
+    }
     const probeKey = "@burka_storage_probe";
     await AsyncStorage.setItem(probeKey, "ok");
     const val = await AsyncStorage.getItem(probeKey);
@@ -1176,6 +1186,7 @@ async function verifyStorageHealth() {
     console.warn("[Storage] Database unhealthy, resetting corrupted storage...", err?.message);
     try {
       await AsyncStorage.clear();
+      await AsyncStorage.setItem("@burka_storage_v23_init", "1").catch(() => {});
     } catch (clearErr) {
       console.warn("[Storage] Clear failed:", clearErr?.message);
     }
