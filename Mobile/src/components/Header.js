@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Icon } from "./Icon.js";
 import { COLORS, RADIUS, SPACING, TOUCH_TARGET } from "../utils/theme.js";

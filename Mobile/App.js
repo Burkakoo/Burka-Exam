@@ -14,6 +14,21 @@ import {
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// Prevent release crashes from unhandled errors / promise rejections on Android
+if (typeof global !== "undefined" && global.ErrorUtils) {
+  const previousHandler = global.ErrorUtils.getGlobalHandler && global.ErrorUtils.getGlobalHandler();
+  global.ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.warn("[GlobalErrorHandler] Intercepted:", error?.message || error, "fatal:", isFatal);
+    if (previousHandler) {
+      try {
+        // Report as non-fatal so native Android bridge does not finish the Activity
+        previousHandler(error, false);
+      } catch {}
+    }
+  });
+}
+
 import { Header } from "./src/components/Header.js";
 import { ProfileDrawer } from "./src/components/ProfileDrawer.js";
 import { SkeletonCard } from "./src/components/Skeleton.js";
@@ -182,23 +197,38 @@ function MainDashboard({ user, onLogout }) {
   }
 
   useEffect(() => {
-    purgeLegacyCacheKeys();
-    loadCachedData();
-    loadDashboardData();
-    flushOfflineQueue();
-    refreshQueue();
+    loadCachedData().catch(() => {});
+    loadDashboardData().catch(() => {});
+    flushOfflineQueue().catch(() => {});
+    refreshQueue().catch(() => {});
+
+    // Defer legacy cache cleanup to background idle time so it never blocks or slows startup
+    const timer = setTimeout(() => {
+      purgeLegacyCacheKeys().catch(() => {});
+    }, 4000);
+    return () => clearTimeout(timer);
   }, []);
 
   async function loadCachedData() {
     try {
-      const [cachedNotes, cachedSubjects, cachedExams] = await Promise.all([
+      const results = await Promise.allSettled([
         AsyncStorage.getItem("@ethioprep_cached_notes"),
         AsyncStorage.getItem("@ethioprep_cached_subjects"),
         AsyncStorage.getItem("@ethioprep_cached_exams")
       ]);
-      if (cachedNotes) setNotes(JSON.parse(cachedNotes));
-      if (cachedSubjects) setSubjects(JSON.parse(cachedSubjects));
-      if (cachedExams) setExams(JSON.parse(cachedExams));
+      const cachedNotes = results[0].status === "fulfilled" ? results[0].value : null;
+      const cachedSubjects = results[1].status === "fulfilled" ? results[1].value : null;
+      const cachedExams = results[2].status === "fulfilled" ? results[2].value : null;
+
+      if (cachedNotes) {
+        try { setNotes(JSON.parse(cachedNotes)); } catch {}
+      }
+      if (cachedSubjects) {
+        try { setSubjects(JSON.parse(cachedSubjects)); } catch {}
+      }
+      if (cachedExams) {
+        try { setExams(JSON.parse(cachedExams)); } catch {}
+      }
     } catch {
       // ignore
     }
@@ -1069,7 +1099,7 @@ function MainDashboard({ user, onLogout }) {
 }
 
 class ErrorBoundary extends React.Component {
-  state = { hasError: false, error: null, showDetails: false };
+  state = { hasError: false, error: null, showDetails: false, clearingCache: false };
 
   static getDerivedStateFromError(error) {
     return { hasError: true, error };
@@ -1093,7 +1123,7 @@ class ErrorBoundary extends React.Component {
             Something went wrong
           </Text>
           <Text style={{ fontSize: 13, color: COLORS.textMuted, marginTop: SPACING.xs, textAlign: "center", marginBottom: SPACING.lg, lineHeight: 18 }}>
-            An unexpected error occurred in this screen. You can reload the app to continue practicing.
+            An unexpected error occurred in this screen. You can reload or reset your local cache to continue practicing.
           </Text>
           {this.state.showDetails && this.state.error && (
             <ScrollView style={{ maxHeight: 120, width: "100%", backgroundColor: COLORS.surface, padding: SPACING.sm, borderRadius: RADIUS.sm, marginBottom: SPACING.lg }}>
@@ -1102,18 +1132,53 @@ class ErrorBoundary extends React.Component {
               </Text>
             </ScrollView>
           )}
-          <TouchableOpacity
-            onPress={() => this.setState({ hasError: false, error: null, showDetails: false })}
-            style={{ backgroundColor: COLORS.primary, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md, borderRadius: RADIUS.md }}
-          >
-            <Text style={{ color: COLORS.onPrimary, fontWeight: "800", fontSize: 15 }}>
-              Try Again
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: SPACING.sm }}>
+            <TouchableOpacity
+              onPress={() => this.setState({ hasError: false, error: null, showDetails: false })}
+              style={{ backgroundColor: COLORS.primary, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderRadius: RADIUS.md }}
+            >
+              <Text style={{ color: COLORS.onPrimary, fontWeight: "800", fontSize: 14 }}>
+                Try Again
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={async () => {
+                this.setState({ clearingCache: true });
+                try {
+                  await AsyncStorage.clear();
+                } catch {}
+                this.setState({ hasError: false, error: null, showDetails: false, clearingCache: false });
+              }}
+              style={{ backgroundColor: COLORS.danger, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderRadius: RADIUS.md }}
+            >
+              <Text style={{ color: "#FFFFFF", fontWeight: "800", fontSize: 14 }}>
+                {this.state.clearingCache ? "Clearing..." : "Reset Cache"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </SafeAreaView>
       );
     }
     return this.props.children;
+  }
+}
+
+// Proactively probe and self-heal storage if SQLite is corrupted / full from earlier builds
+async function verifyStorageHealth() {
+  try {
+    const probeKey = "@burka_storage_probe";
+    await AsyncStorage.setItem(probeKey, "ok");
+    const val = await AsyncStorage.getItem(probeKey);
+    if (val !== "ok") throw new Error("Storage probe mismatch");
+    await AsyncStorage.removeItem(probeKey);
+  } catch (err) {
+    console.warn("[Storage] Database unhealthy, resetting corrupted storage...", err?.message);
+    try {
+      await AsyncStorage.clear();
+    } catch (clearErr) {
+      console.warn("[Storage] Clear failed:", clearErr?.message);
+    }
   }
 }
 
@@ -1122,18 +1187,20 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    AsyncStorage.getItem("ethioprep_user")
-      .then((val) => {
-        if (val) {
-          try {
-            setUser(JSON.parse(val));
-          } catch {
-            setUser(null);
+    verifyStorageHealth().finally(() => {
+      AsyncStorage.getItem("ethioprep_user")
+        .then((val) => {
+          if (val) {
+            try {
+              setUser(JSON.parse(val));
+            } catch {
+              setUser(null);
+            }
           }
-        }
-      })
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
+        })
+        .catch(() => setUser(null))
+        .finally(() => setLoading(false));
+    });
   }, []);
 
   function handleLogout() {

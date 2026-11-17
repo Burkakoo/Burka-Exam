@@ -10,7 +10,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "android": {
-      "versionCode": 21,
+      "versionCode": 22,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE"
@@ -34,7 +34,8 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 26
+            "minSdkVersion": 26,
+            "extraProguardRules": "-keep class com.reactnativecommunity.asyncstorage.** { *; }\n-keep class com.facebook.react.** { *; }"
           }
         }
       ]
