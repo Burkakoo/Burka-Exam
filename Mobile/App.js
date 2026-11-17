@@ -1177,20 +1177,60 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// Proactively self-heal storage if SQLite was corrupted / full from earlier builds
+// v25: Force-clear SQLite on ALL existing devices to eliminate any corrupted/full database
+// from prior builds (v22, v23, v24). This runs once per install of v25.
+// After clearing, we save fresh credentials back so the user stays logged in.
+const STORAGE_INIT_KEY = "@burka_storage_v25_init";
+
 async function verifyStorageHealth() {
   try {
-    const v = await AsyncStorage.getItem("@burka_storage_v24_init").catch(() => null);
-    if (!v) {
-      console.log("[Storage] Initializing v24 clean storage...");
-      await AsyncStorage.clear().catch(() => {});
-      await AsyncStorage.setItem("@burka_storage_v24_init", "1").catch(() => {});
+    // Try to read the version marker - if this throws, DB is already broken
+    let marker = null;
+    try {
+      marker = await AsyncStorage.getItem(STORAGE_INIT_KEY);
+    } catch {
+      marker = null; // DB is broken, force clear below
+    }
+
+    if (!marker) {
+      console.log("[Storage] v25 first run: clearing corrupted/full storage from prior builds...");
+
+      // 1. Preserve login token before clearing so user doesn't get logged out
+      let savedToken = null;
+      let savedRefreshToken = null;
+      let savedUser = null;
+      try {
+        savedToken = await AsyncStorage.getItem("ethioprep_token");
+        savedRefreshToken = await AsyncStorage.getItem("ethioprep_refresh_token");
+        savedUser = await AsyncStorage.getItem("ethioprep_user");
+      } catch { /* ignore - DB may be unreadable */ }
+
+      // 2. Nuclear clear of entire SQLite database (fixes SQLITE_FULL error)
+      try {
+        await AsyncStorage.clear();
+      } catch {
+        // If clear itself fails (extreme corruption), nothing more we can do
+        // but app will continue and not crash
+      }
+
+      // 3. Restore critical login state so user stays logged in
+      try {
+        if (savedToken) await AsyncStorage.setItem("ethioprep_token", savedToken);
+        if (savedRefreshToken) await AsyncStorage.setItem("ethioprep_refresh_token", savedRefreshToken);
+        if (savedUser) await AsyncStorage.setItem("ethioprep_user", savedUser);
+      } catch { /* ignore */ }
+
+      // 4. Mark v25 as initialized so we don't repeat this on next launch
+      try {
+        await AsyncStorage.setItem(STORAGE_INIT_KEY, "1");
+      } catch { /* ignore */ }
+
+      console.log("[Storage] v25 storage initialization complete.");
     }
   } catch (err) {
-    console.warn("[Storage] Storage initialization error:", err?.message);
-    try {
-      await AsyncStorage.clear().catch(() => {});
-    } catch {}
+    // Last resort: attempt clear without crashing the app
+    console.warn("[Storage] Storage health check error:", err?.message);
+    try { await AsyncStorage.clear(); } catch {}
   }
 }
 

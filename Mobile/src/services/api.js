@@ -74,7 +74,18 @@ export async function safeSetItem(key, value) {
   try {
     await AsyncStorage.setItem(key, value);
   } catch (err) {
-    console.warn("[Storage] safeSetItem caught error for key:", key, err?.message || err);
+    // SQLITE_FULL or other storage errors — log but never throw or crash
+    console.warn("[Storage] safeSetItem failed for key:", key, err?.message || err);
+  }
+}
+
+// Safe wrapper for AsyncStorage.getItem that never throws even if DB is corrupted/full
+export async function safeGetItem(key) {
+  try {
+    return await AsyncStorage.getItem(key);
+  } catch (err) {
+    console.warn("[Storage] safeGetItem failed for key:", key, err?.message || err);
+    return null;
   }
 }
 
@@ -85,7 +96,7 @@ async function tryRefreshAccessToken() {
 
   refreshPromise = (async () => {
     try {
-      const refreshToken = await AsyncStorage.getItem("ethioprep_refresh_token");
+      const refreshToken = await safeGetItem("ethioprep_refresh_token");
       if (!refreshToken) return null;
 
       const response = await fetch(`${API_URL}/auth/refresh-token`, {
@@ -121,7 +132,7 @@ async function tryRefreshAccessToken() {
 }
 
 export async function request(path, options = {}, isRetry = false) {
-  const token = await AsyncStorage.getItem("ethioprep_token");
+  const token = await safeGetItem("ethioprep_token");
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -285,7 +296,7 @@ export async function requestWithOfflineQueue(path, options, change) {
 
 export async function logout() {
   try {
-    const refreshToken = await AsyncStorage.getItem("ethioprep_refresh_token");
+    const refreshToken = await safeGetItem("ethioprep_refresh_token");
     if (refreshToken) {
       await fetch(`${API_URL}/auth/logout`, {
         method: "POST",
