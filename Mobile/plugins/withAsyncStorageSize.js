@@ -20,7 +20,21 @@ module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
       });
     }
 
-    // 2. Disable R8/ProGuard minification in release builds to prevent runtime class stripping crashes
+    // 2. Enable dedicated single-thread executor to prevent SQLite multi-threading race conditions & locks
+    const executorIndex = modConfig.modResults.findIndex(
+      (item) => item.type === "property" && item.key === "AsyncStorage_dedicatedExecutor"
+    );
+    if (executorIndex >= 0) {
+      modConfig.modResults[executorIndex].value = "true";
+    } else {
+      modConfig.modResults.push({
+        type: "property",
+        key: "AsyncStorage_dedicatedExecutor",
+        value: "true"
+      });
+    }
+
+    // 3. Disable R8/ProGuard minification in release builds to prevent runtime class stripping crashes
     const minifyIndex = modConfig.modResults.findIndex(
       (item) => item.type === "property" && item.key === "android.enableMinifyInReleaseBuilds"
     );

@@ -261,40 +261,50 @@ function MainDashboard({ user, onLogout }) {
       ]);
 
       if (subjRes.status === "fulfilled") {
-        const s = subjRes.value?.subjects || [];
-        setSubjects(s);
-        safeSetItem("@ethioprep_cached_subjects", JSON.stringify(s));
+        setSubjects(subjRes.value?.subjects || []);
       }
       if (examsRes.status === "fulfilled") {
-        const e = examsRes.value?.exams || [];
-        setExams(e);
-        // Optimize cache: strip massive questionIds arrays to keep local storage lightweight & safe
-        const slimExams = e.map((x) => ({
-          _id: x._id,
-          title: x.title,
-          examYear: x.examYear,
-          year: x.year,
-          subjectId: x.subjectId,
-          accessLevel: x.accessLevel,
-          durationMinutes: x.durationMinutes,
-          chapterBreakdown: x.chapterBreakdown,
-          questionCount: Array.isArray(x.questionIds) ? x.questionIds.length : (x.questionCount || 0),
-          questionIds: []
-        }));
-        safeSetItem("@ethioprep_cached_exams", JSON.stringify(slimExams));
+        setExams(examsRes.value?.exams || []);
       }
       if (notesRes.status === "fulfilled") {
-        const n = notesRes.value?.notes || [];
-        setNotes(n);
-        safeSetItem("@ethioprep_cached_notes", JSON.stringify(n));
+        setNotes(notesRes.value?.notes || []);
       }
       if (progRes.status === "fulfilled") setProgress(progRes.value?.progress || []);
       if (payRes.status === "fulfilled") setPayments(payRes.value?.payments || []);
       if (profileRes?.status === "fulfilled" && profileRes.value?.user) {
         const u = profileRes.value.user;
         setCurrentUser(u);
-        safeSetItem("ethioprep_user", JSON.stringify(u));
       }
+
+      // Persist lightweight cache in background sequence without blocking UI or colliding
+      (async () => {
+        try {
+          if (subjRes.status === "fulfilled" && subjRes.value?.subjects) {
+            await safeSetItem("@ethioprep_cached_subjects", JSON.stringify(subjRes.value.subjects));
+          }
+          if (examsRes.status === "fulfilled" && examsRes.value?.exams) {
+            const slimExams = (examsRes.value.exams || []).map((x) => ({
+              _id: x._id,
+              title: x.title,
+              examYear: x.examYear,
+              year: x.year,
+              subjectId: x.subjectId,
+              accessLevel: x.accessLevel,
+              durationMinutes: x.durationMinutes,
+              chapterBreakdown: x.chapterBreakdown,
+              questionCount: Array.isArray(x.questionIds) ? x.questionIds.length : (x.questionCount || 0),
+              questionIds: []
+            }));
+            await safeSetItem("@ethioprep_cached_exams", JSON.stringify(slimExams));
+          }
+          if (notesRes.status === "fulfilled" && notesRes.value?.notes) {
+            await safeSetItem("@ethioprep_cached_notes", JSON.stringify(notesRes.value.notes));
+          }
+          if (profileRes?.status === "fulfilled" && profileRes.value?.user) {
+            await safeSetItem("ethioprep_user", JSON.stringify(profileRes.value.user));
+          }
+        } catch {}
+      })();
     } catch (error) {
       setNotice({ type: "error", message: "Failed to sync remote data. Offline cache active." });
     } finally {
@@ -1167,29 +1177,20 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// Proactively probe and self-heal storage if SQLite is corrupted / full from earlier builds
+// Proactively self-heal storage if SQLite was corrupted / full from earlier builds
 async function verifyStorageHealth() {
   try {
-    const v = await AsyncStorage.getItem("@burka_storage_v23_init").catch(() => null);
+    const v = await AsyncStorage.getItem("@burka_storage_v24_init").catch(() => null);
     if (!v) {
-      console.log("[Storage] Initializing v23 clean storage...");
+      console.log("[Storage] Initializing v24 clean storage...");
       await AsyncStorage.clear().catch(() => {});
-      await AsyncStorage.setItem("@burka_storage_v23_init", "1").catch(() => {});
-      return;
+      await AsyncStorage.setItem("@burka_storage_v24_init", "1").catch(() => {});
     }
-    const probeKey = "@burka_storage_probe";
-    await AsyncStorage.setItem(probeKey, "ok");
-    const val = await AsyncStorage.getItem(probeKey);
-    if (val !== "ok") throw new Error("Storage probe mismatch");
-    await AsyncStorage.removeItem(probeKey);
   } catch (err) {
-    console.warn("[Storage] Database unhealthy, resetting corrupted storage...", err?.message);
+    console.warn("[Storage] Storage initialization error:", err?.message);
     try {
-      await AsyncStorage.clear();
-      await AsyncStorage.setItem("@burka_storage_v23_init", "1").catch(() => {});
-    } catch (clearErr) {
-      console.warn("[Storage] Clear failed:", clearErr?.message);
-    }
+      await AsyncStorage.clear().catch(() => {});
+    } catch {}
   }
 }
 

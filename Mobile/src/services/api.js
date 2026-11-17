@@ -74,33 +74,7 @@ export async function safeSetItem(key, value) {
   try {
     await AsyncStorage.setItem(key, value);
   } catch (err) {
-    const msg = String(err?.message || "");
-    if (
-      msg.includes("SQLITE_FULL") ||
-      msg.includes("disk is full") ||
-      msg.includes("code 13")
-    ) {
-      console.warn("[Storage] SQLITE_FULL detected during safeSetItem. Purging legacy cache keys and retrying...", key);
-      try {
-        const allKeys = await AsyncStorage.getAllKeys();
-        const obsoleteKeys = (allKeys || []).filter((k) =>
-          k.startsWith("@ethioprep_cached_exam_session_") ||
-          (k.startsWith("@ethioprep_cached_practice_qs_") && !k.endsWith("_all"))
-        );
-        if (obsoleteKeys.length > 0) {
-          await AsyncStorage.multiRemove(obsoleteKeys);
-        }
-      } catch (purgeErr) {
-        console.warn("[Storage] Failed to purge legacy keys:", purgeErr?.message);
-      }
-      try {
-        await AsyncStorage.setItem(key, value);
-      } catch (retryErr) {
-        console.warn("[Storage] Retry setItem failed:", retryErr?.message);
-      }
-    } else {
-      console.warn("[Storage] safeSetItem error for key:", key, err?.message);
-    }
+    console.warn("[Storage] safeSetItem caught error for key:", key, err?.message || err);
   }
 }
 
