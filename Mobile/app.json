@@ -10,7 +10,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "android": {
-      "versionCode": 25,
+      "versionCode": 26,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE"
@@ -38,7 +38,8 @@
             "extraProguardRules": "-keep class com.reactnativecommunity.asyncstorage.** { *; }\n-keep class com.facebook.react.** { *; }"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

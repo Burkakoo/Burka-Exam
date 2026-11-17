@@ -1,8 +1,42 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 
 const API_URL =
   process.env.EXPO_PUBLIC_API_URL || "https://burka-exam-backend.onrender.com/api";
 
+// ─── Secure token storage (Android Keystore — never gets SQLITE_FULL) ────────
+// Auth tokens are stored in SecureStore, NOT AsyncStorage.
+// This eliminates the SQLITE_FULL crash on login/startup entirely.
+const AUTH_KEYS = ["ethioprep_token", "ethioprep_refresh_token", "ethioprep_user"];
+
+async function secureGet(key) {
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch (err) {
+    console.warn("[SecureStore] getItemAsync failed:", key, err?.message);
+    return null;
+  }
+}
+
+async function secureSet(key, value) {
+  try {
+    if (value === null || value === undefined) {
+      await SecureStore.deleteItemAsync(key);
+    } else {
+      await SecureStore.setItemAsync(key, String(value));
+    }
+  } catch (err) {
+    console.warn("[SecureStore] setItemAsync failed:", key, err?.message);
+  }
+}
+
+async function secureRemove(key) {
+  try {
+    await SecureStore.deleteItemAsync(key);
+  } catch { /* ignore */ }
+}
+
+// ─── AsyncStorage wrappers (for non-auth cache data) ─────────────────────────
 let refreshPromise = null;
 
 export function getFriendlyErrorMessage(error, defaultMessage = "An unexpected error occurred. Please try again.") {
@@ -71,21 +105,37 @@ export function getFriendlyErrorMessage(error, defaultMessage = "An unexpected e
 }
 
 export async function safeSetItem(key, value) {
+  if (AUTH_KEYS.includes(key)) {
+    return secureSet(key, value);
+  }
   try {
     await AsyncStorage.setItem(key, value);
   } catch (err) {
-    // SQLITE_FULL or other storage errors — log but never throw or crash
     console.warn("[Storage] safeSetItem failed for key:", key, err?.message || err);
   }
 }
 
-// Safe wrapper for AsyncStorage.getItem that never throws even if DB is corrupted/full
+// Safe wrapper for getItem — auth keys use SecureStore, others use AsyncStorage
 export async function safeGetItem(key) {
+  if (AUTH_KEYS.includes(key)) {
+    return secureGet(key);
+  }
   try {
     return await AsyncStorage.getItem(key);
   } catch (err) {
     console.warn("[Storage] safeGetItem failed for key:", key, err?.message || err);
     return null;
+  }
+}
+
+// Remove auth keys from SecureStore; cache keys from AsyncStorage
+export async function safeRemoveItems(keys) {
+  for (const key of keys) {
+    if (AUTH_KEYS.includes(key)) {
+      await secureRemove(key);
+    } else {
+      try { await AsyncStorage.removeItem(key); } catch { /* ignore */ }
+    }
   }
 }
 
@@ -96,7 +146,7 @@ async function tryRefreshAccessToken() {
 
   refreshPromise = (async () => {
     try {
-      const refreshToken = await safeGetItem("ethioprep_refresh_token");
+      const refreshToken = await secureGet("ethioprep_refresh_token");
       if (!refreshToken) return null;
 
       const response = await fetch(`${API_URL}/auth/refresh-token`, {
@@ -107,16 +157,17 @@ async function tryRefreshAccessToken() {
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 400) {
-          await AsyncStorage.multiRemove(["ethioprep_token", "ethioprep_refresh_token"]);
+          await secureRemove("ethioprep_token");
+          await secureRemove("ethioprep_refresh_token");
         }
         return null;
       }
 
       const data = await response.json().catch(() => ({}));
       if (data.accessToken) {
-        await safeSetItem("ethioprep_token", data.accessToken);
+        await secureSet("ethioprep_token", data.accessToken);
         if (data.refreshToken) {
-          await safeSetItem("ethioprep_refresh_token", data.refreshToken);
+          await secureSet("ethioprep_refresh_token", data.refreshToken);
         }
         return data.accessToken;
       }
@@ -132,7 +183,7 @@ async function tryRefreshAccessToken() {
 }
 
 export async function request(path, options = {}, isRetry = false) {
-  const token = await safeGetItem("ethioprep_token");
+  const token = await secureGet("ethioprep_token");
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -176,13 +227,13 @@ export async function login(email, password) {
     body: JSON.stringify({ email, password })
   });
   if (result.accessToken) {
-    await safeSetItem("ethioprep_token", result.accessToken);
+    await secureSet("ethioprep_token", result.accessToken);
   }
   if (result.refreshToken) {
-    await safeSetItem("ethioprep_refresh_token", result.refreshToken);
+    await secureSet("ethioprep_refresh_token", result.refreshToken);
   }
   if (result.user) {
-    await safeSetItem("ethioprep_user", JSON.stringify(result.user));
+    await secureSet("ethioprep_user", JSON.stringify(result.user));
   }
   return result;
 }
@@ -202,13 +253,13 @@ export async function verifyEmail(email, otp) {
     body: JSON.stringify({ email, otp })
   });
   if (result.accessToken) {
-    await safeSetItem("ethioprep_token", result.accessToken);
+    await secureSet("ethioprep_token", result.accessToken);
   }
   if (result.refreshToken) {
-    await safeSetItem("ethioprep_refresh_token", result.refreshToken);
+    await secureSet("ethioprep_refresh_token", result.refreshToken);
   }
   if (result.user) {
-    await safeSetItem("ethioprep_user", JSON.stringify(result.user));
+    await secureSet("ethioprep_user", JSON.stringify(result.user));
   }
   return result;
 }
@@ -247,7 +298,7 @@ export async function updateStream(stream) {
     body: JSON.stringify({ stream })
   });
   if (result.user) {
-    await AsyncStorage.setItem("ethioprep_user", JSON.stringify(result.user));
+    await secureSet("ethioprep_user", JSON.stringify(result.user));
   }
   return result;
 }
@@ -262,7 +313,7 @@ export async function updateProfile({ displayName, phoneNumber, email, telegramL
     body: JSON.stringify({ displayName, phoneNumber, email, telegramLink, qa, notifications })
   });
   if (result.user) {
-    await AsyncStorage.setItem("ethioprep_user", JSON.stringify(result.user));
+    await secureSet("ethioprep_user", JSON.stringify(result.user));
   }
   return result;
 }
@@ -296,7 +347,7 @@ export async function requestWithOfflineQueue(path, options, change) {
 
 export async function logout() {
   try {
-    const refreshToken = await safeGetItem("ethioprep_refresh_token");
+    const refreshToken = await secureGet("ethioprep_refresh_token");
     if (refreshToken) {
       await fetch(`${API_URL}/auth/logout`, {
         method: "POST",
@@ -307,5 +358,7 @@ export async function logout() {
   } catch {
     // ignore network errors on logout
   }
-  await AsyncStorage.multiRemove(["ethioprep_token", "ethioprep_refresh_token", "ethioprep_user"]);
+  await secureRemove("ethioprep_token");
+  await secureRemove("ethioprep_refresh_token");
+  await secureRemove("ethioprep_user");
 }

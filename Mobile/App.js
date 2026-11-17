@@ -42,7 +42,9 @@ import { ChatTutorScreen } from "./src/screens/ChatTutorScreen.js";
 import {
   request,
   requestWithOfflineQueue,
-  safeSetItem
+  safeSetItem,
+  safeGetItem,
+  safeRemoveItems
 } from "./src/services/api.js";
 import { getQueue, queueMutation, syncQueuedMutations } from "./src/services/offlineQueue.js";
 import { purgeLegacyCacheKeys } from "./src/services/offlineSync.js";
@@ -202,9 +204,9 @@ function MainDashboard({ user, onLogout }) {
   async function loadCachedData() {
     try {
       const results = await Promise.allSettled([
-        AsyncStorage.getItem("@ethioprep_cached_notes"),
-        AsyncStorage.getItem("@ethioprep_cached_subjects"),
-        AsyncStorage.getItem("@ethioprep_cached_exams")
+        safeGetItem("@ethioprep_cached_notes"),
+        safeGetItem("@ethioprep_cached_subjects"),
+        safeGetItem("@ethioprep_cached_exams")
       ]);
       const cachedNotes = results[0].status === "fulfilled" ? results[0].value : null;
       const cachedSubjects = results[1].status === "fulfilled" ? results[1].value : null;
@@ -1177,59 +1179,38 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// v25: Force-clear SQLite on ALL existing devices to eliminate any corrupted/full database
-// from prior builds (v22, v23, v24). This runs once per install of v25.
-// After clearing, we save fresh credentials back so the user stays logged in.
-const STORAGE_INIT_KEY = "@burka_storage_v25_init";
+// v26: Auth tokens moved to SecureStore (Android Keystore) — completely immune to SQLITE_FULL.
+// verifyStorageHealth now only clears the AsyncStorage cache (non-auth data).
+// No more crash on login or startup from a full/corrupt SQLite DB.
+import * as SecureStore from "expo-secure-store";
+
+const STORAGE_INIT_KEY = "@burka_cache_v26_init";
 
 async function verifyStorageHealth() {
   try {
-    // Try to read the version marker - if this throws, DB is already broken
+    // Only clear the AsyncStorage CACHE (not auth — auth is in SecureStore now).
+    // We clear once per v26 install to wipe any old corrupt cache from prior builds.
     let marker = null;
     try {
       marker = await AsyncStorage.getItem(STORAGE_INIT_KEY);
     } catch {
-      marker = null; // DB is broken, force clear below
+      marker = null;
     }
 
     if (!marker) {
-      console.log("[Storage] v25 first run: clearing corrupted/full storage from prior builds...");
-
-      // 1. Preserve login token before clearing so user doesn't get logged out
-      let savedToken = null;
-      let savedRefreshToken = null;
-      let savedUser = null;
-      try {
-        savedToken = await AsyncStorage.getItem("ethioprep_token");
-        savedRefreshToken = await AsyncStorage.getItem("ethioprep_refresh_token");
-        savedUser = await AsyncStorage.getItem("ethioprep_user");
-      } catch { /* ignore - DB may be unreadable */ }
-
-      // 2. Nuclear clear of entire SQLite database (fixes SQLITE_FULL error)
+      console.log("[Storage] v26 first run: clearing old AsyncStorage cache...");
       try {
         await AsyncStorage.clear();
-      } catch {
-        // If clear itself fails (extreme corruption), nothing more we can do
-        // but app will continue and not crash
+      } catch (err) {
+        console.warn("[Storage] AsyncStorage.clear() failed:", err?.message);
       }
-
-      // 3. Restore critical login state so user stays logged in
-      try {
-        if (savedToken) await AsyncStorage.setItem("ethioprep_token", savedToken);
-        if (savedRefreshToken) await AsyncStorage.setItem("ethioprep_refresh_token", savedRefreshToken);
-        if (savedUser) await AsyncStorage.setItem("ethioprep_user", savedUser);
-      } catch { /* ignore */ }
-
-      // 4. Mark v25 as initialized so we don't repeat this on next launch
       try {
         await AsyncStorage.setItem(STORAGE_INIT_KEY, "1");
-      } catch { /* ignore */ }
-
-      console.log("[Storage] v25 storage initialization complete.");
+      } catch { /* ignore — non-critical */ }
+      console.log("[Storage] v26 cache clear complete.");
     }
   } catch (err) {
-    // Last resort: attempt clear without crashing the app
-    console.warn("[Storage] Storage health check error:", err?.message);
+    console.warn("[Storage] verifyStorageHealth error:", err?.message);
     try { await AsyncStorage.clear(); } catch {}
   }
 }
@@ -1240,7 +1221,8 @@ function AppContent() {
 
   useEffect(() => {
     verifyStorageHealth().finally(() => {
-      AsyncStorage.getItem("ethioprep_user")
+      // Read user from SecureStore — immune to SQLITE_FULL
+      SecureStore.getItemAsync("ethioprep_user")
         .then((val) => {
           if (val) {
             try {
@@ -1256,7 +1238,7 @@ function AppContent() {
   }, []);
 
   function handleLogout() {
-    AsyncStorage.multiRemove(["ethioprep_token", "ethioprep_user"])
+    safeRemoveItems(["ethioprep_token", "ethioprep_user", "ethioprep_refresh_token"])
       .then(() => {
         setUser(null);
       })
