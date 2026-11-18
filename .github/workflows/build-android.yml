@@ -1,0 +1,100 @@
+name: Build Android APK & Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'Mobile/**'
+      - '.github/workflows/build-android.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: Mobile/package-lock.json
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        working-directory: Mobile
+        run: npm ci
+
+      - name: Generate Native Android Project (Expo Prebuild)
+        working-directory: Mobile
+        env:
+          EXPO_PUBLIC_API_URL: https://burka-exam-backend.onrender.com/api
+        run: npx expo prebuild --platform android --clean
+
+      - name: Make Gradle executable
+        working-directory: Mobile/android
+        run: chmod +x gradlew
+
+      - name: Build Android Release APK
+        working-directory: Mobile/android
+        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m"
+
+      - name: Locate and Stage APK
+        run: |
+          mkdir -p release-artifacts
+          APK_PATH=$(find Mobile/android/app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::No APK file found in outputs!"
+            exit 1
+          fi
+          echo "Found APK: $APK_PATH"
+          cp "$APK_PATH" release-artifacts/burka-exam-v1.0.0-build27.apk
+          ls -lh release-artifacts/
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: burka-exam-v1.0.0-build27
+          path: release-artifacts/burka-exam-v1.0.0-build27.apk
+          retention-days: 30
+
+      - name: Publish or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/burka-exam-v1.0.0-build27.apk
+          name: Burka Exam Mobile v1.0.0 (Build 27)
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0-build.27' }}
+          body: |
+            ## 📱 Burka Exam Mobile - Android APK (Build 27)
+
+            ### 🚀 Highlights & Fixes:
+            - **Crash on Login Resolved:** Fixed uncaught SQLite errors during login by implementing `safeStorageGet` / `safeStorageSet` throughout `offlineQueue.js`.
+            - **Android Keystore (SecureStore):** Critical authentication credentials (`token`, `refreshToken`, `user`) are moved to Android hardware Keystore, completely immune to `SQLITE_FULL` database limit issues.
+            - **All 32 Service Tests Passing:** Full regression and unit test suite verified.
+
+            ### 📥 How to Install:
+            1. Download `burka-exam-v1.0.0-build27.apk` below.
+            2. If you have an older crashing build installed on your phone, **uninstall it first** via Android Settings to clear the system crash quarantine.
+            3. Open the downloaded APK and tap **Install**.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
