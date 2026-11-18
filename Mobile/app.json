@@ -10,7 +10,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "android": {
-      "versionCode": 26,
+      "versionCode": 27,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE"

@@ -14,6 +14,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 
 // Prevent release crashes from unhandled errors / promise rejections on Android
 if (typeof global !== "undefined" && global.ErrorUtils) {
@@ -1182,7 +1183,6 @@ class ErrorBoundary extends React.Component {
 // v26: Auth tokens moved to SecureStore (Android Keystore) — completely immune to SQLITE_FULL.
 // verifyStorageHealth now only clears the AsyncStorage cache (non-auth data).
 // No more crash on login or startup from a full/corrupt SQLite DB.
-import * as SecureStore from "expo-secure-store";
 
 const STORAGE_INIT_KEY = "@burka_cache_v26_init";
 
