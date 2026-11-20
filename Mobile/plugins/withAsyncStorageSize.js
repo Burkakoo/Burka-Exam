@@ -1,4 +1,4 @@
-const { withGradleProperties, withAppBuildGradle, withProjectBuildGradle } = require("@expo/config-plugins");
+const { withGradleProperties } = require("@expo/config-plugins");
 
 module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
   config = withGradleProperties(config, (modConfig) => {
@@ -51,32 +51,5 @@ module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
     return modConfig;
   });
 
-  // 4. Add an allprojects block to the root build.gradle so ALL submodules
-  //    (including :expo, :expo-constants, etc.) skip checkReleaseAarMetadata.
-  config = withProjectBuildGradle(config, (modConfig) => {
-    const disableAarBlock = `
-// Disable AarMetadata checks for all projects and submodules.
-allprojects {
-    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-        enabled = false
-    }
-}
-`;
-    if (!modConfig.modResults.contents.includes("AarMetadata")) {
-      modConfig.modResults.contents += disableAarBlock;
-    }
-    return modConfig;
-  });
-
-  return withAppBuildGradle(config, (modConfig) => {
-    if (!modConfig.modResults.contents.includes("AarMetadata")) {
-      modConfig.modResults.contents += `
-// Disable AarMetadata check to allow building with latest Expo 58 modules on Android 16 (API 36)
-tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-    enabled = false
-}
-`;
-    }
-    return modConfig;
-  });
+  return config;
 };
