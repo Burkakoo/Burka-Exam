@@ -1,4 +1,4 @@
-const { withGradleProperties, withAppBuildGradle } = require("@expo/config-plugins");
+const { withGradleProperties, withAppBuildGradle, withProjectBuildGradle } = require("@expo/config-plugins");
 
 module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
   config = withGradleProperties(config, (modConfig) => {
@@ -48,6 +48,16 @@ module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
       });
     }
 
+    return modConfig;
+  });
+
+  // 4. Fix root project compileSdk so :expo and other submodules also use API 37
+  //    expo-build-properties only patches app/build.gradle; root build.gradle
+  //    declares a global `compileSdk` ext variable used by all submodules.
+  config = withProjectBuildGradle(config, (modConfig) => {
+    // Replace compileSdk = 36 (or any value) with compileSdk = 37 in the root build.gradle
+    modConfig.modResults.contents = modConfig.modResults.contents
+      .replace(/\bcompileSdk\s*=\s*\d+/g, "compileSdk = 37");
     return modConfig;
   });
 

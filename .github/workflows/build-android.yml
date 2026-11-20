@@ -23,10 +23,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: Mobile/package-lock.json
 
@@ -52,9 +52,15 @@ jobs:
           EXPO_PUBLIC_API_URL: https://burka-exam-backend.onrender.com/api
         run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Disable AarMetadata Check
+      - name: Disable AarMetadata Check (all submodules)
         run: |
-          echo "tasks.matching { it.name.contains('AarMetadata') }.configureEach { enabled = false }" >> Mobile/android/app/build.gradle
+          # Patch every build.gradle in the android project so ALL submodules skip the check
+          find Mobile/android -name "build.gradle" | while read f; do
+            if ! grep -q "AarMetadata" "$f"; then
+              echo "tasks.matching { it.name.contains('AarMetadata') }.configureEach { enabled = false }" >> "$f"
+              echo "Patched: $f"
+            fi
+          done
 
       - name: Make Gradle executable
         working-directory: Mobile/android
