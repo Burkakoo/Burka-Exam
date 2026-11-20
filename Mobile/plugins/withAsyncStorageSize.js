@@ -51,22 +51,14 @@ module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
     return modConfig;
   });
 
-  // 4. Add allprojects & subprojects block to root build.gradle so ALL submodules
+  // 4. Add an allprojects block to the root build.gradle so ALL submodules
   //    (including :expo, :expo-constants, etc.) skip checkReleaseAarMetadata.
   config = withProjectBuildGradle(config, (modConfig) => {
     const disableAarBlock = `
-// Disable AarMetadata check for ALL projects/submodules (Expo SDK 58 modules require compileSdk 37
-// which does not yet exist in sdkmanager; this lets us build against API 36 without errors).
+// Disable AarMetadata checks for all projects and submodules.
 allprojects {
     tasks.matching { it.name.contains("AarMetadata") }.configureEach {
         enabled = false
-    }
-}
-subprojects {
-    afterEvaluate { project ->
-        project.tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-            enabled = false
-        }
     }
 }
 `;
