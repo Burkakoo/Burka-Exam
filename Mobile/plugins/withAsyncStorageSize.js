@@ -53,8 +53,8 @@ module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
 
   config = withProjectBuildGradle(config, (modConfig) => {
     const block = `
-// Skip only AarMetadata validation tasks. Their generated metadata is still produced.
-allprojects {
+// Skip only the app AarMetadata validation task. Library metadata tasks stay enabled.
+project(":app") {
     tasks.matching { it.name.contains("checkReleaseAarMetadata") }.configureEach {
         enabled = false
     }
