@@ -51,13 +51,28 @@ module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
     return modConfig;
   });
 
-  // 4. Fix root project compileSdk so :expo and other submodules also use API 37
-  //    expo-build-properties only patches app/build.gradle; root build.gradle
-  //    declares a global `compileSdk` ext variable used by all submodules.
+  // 4. Add allprojects & subprojects block to root build.gradle so ALL submodules
+  //    (including :expo, :expo-constants, etc.) skip checkReleaseAarMetadata.
   config = withProjectBuildGradle(config, (modConfig) => {
-    // Replace compileSdk = 36 (or any value) with compileSdk = 37 in the root build.gradle
-    modConfig.modResults.contents = modConfig.modResults.contents
-      .replace(/\bcompileSdk\s*=\s*\d+/g, "compileSdk = 37");
+    const disableAarBlock = `
+// Disable AarMetadata check for ALL projects/submodules (Expo SDK 58 modules require compileSdk 37
+// which does not yet exist in sdkmanager; this lets us build against API 36 without errors).
+allprojects {
+    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
+        enabled = false
+    }
+}
+subprojects {
+    afterEvaluate { project ->
+        project.tasks.matching { it.name.contains("AarMetadata") }.configureEach {
+            enabled = false
+        }
+    }
+}
+`;
+    if (!modConfig.modResults.contents.includes("AarMetadata")) {
+      modConfig.modResults.contents += disableAarBlock;
+    }
     return modConfig;
   });
 
