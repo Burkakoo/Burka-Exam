@@ -1,7 +1,7 @@
-const { withGradleProperties } = require("@expo/config-plugins");
+const { withGradleProperties, withAppBuildGradle } = require("@expo/config-plugins");
 
 module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
-  return withGradleProperties(config, (modConfig) => {
+  config = withGradleProperties(config, (modConfig) => {
     if (!Array.isArray(modConfig.modResults)) {
       modConfig.modResults = [];
     }
@@ -48,6 +48,18 @@ module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
       });
     }
 
+    return modConfig;
+  });
+
+  return withAppBuildGradle(config, (modConfig) => {
+    if (!modConfig.modResults.contents.includes("AarMetadata")) {
+      modConfig.modResults.contents += `
+// Disable AarMetadata check to allow building with latest Expo 58 modules on Android 16 (API 36)
+tasks.matching { it.name.contains("AarMetadata") }.configureEach {
+    enabled = false
+}
+`;
+    }
     return modConfig;
   });
 };

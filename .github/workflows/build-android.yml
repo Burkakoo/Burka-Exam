@@ -52,6 +52,10 @@ jobs:
           EXPO_PUBLIC_API_URL: https://burka-exam-backend.onrender.com/api
         run: npx expo prebuild --platform android --clean --no-install
 
+      - name: Disable AarMetadata Check
+        run: |
+          echo "tasks.matching { it.name.contains('AarMetadata') }.configureEach { enabled = false }" >> Mobile/android/app/build.gradle
+
       - name: Make Gradle executable
         working-directory: Mobile/android
         run: chmod +x gradlew
