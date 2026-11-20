@@ -1,4 +1,4 @@
-const { withGradleProperties, withProjectBuildGradle } = require("@expo/config-plugins");
+const { withGradleProperties } = require("@expo/config-plugins");
 
 module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
   config = withGradleProperties(config, (modConfig) => {
@@ -48,21 +48,6 @@ module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
       });
     }
 
-    return modConfig;
-  });
-
-  config = withProjectBuildGradle(config, (modConfig) => {
-    const block = `
-// Skip only the app AarMetadata validation task. Library metadata tasks stay enabled.
-project(":app") {
-    tasks.matching { it.name.contains("checkReleaseAarMetadata") }.configureEach {
-        enabled = false
-    }
-}
-`;
-    if (!modConfig.modResults.contents.includes("checkReleaseAarMetadata")) {
-      modConfig.modResults.contents += block;
-    }
     return modConfig;
   });
 
