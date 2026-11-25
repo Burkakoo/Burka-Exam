@@ -8,6 +8,13 @@
     "start": "expo start"
   },
   "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          ".*"
+        ]
+      }
+    },
     "install": {
       "exclude": [
         "react-native"
