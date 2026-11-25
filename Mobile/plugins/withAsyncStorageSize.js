@@ -51,7 +51,7 @@ module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
     return modConfig;
   });
 
-  // 4. Add allprojects & subprojects block to root build.gradle so ALL submodules
+  // 4. Add allprojects block to root build.gradle so ALL submodules
   //    (including :expo, :expo-constants, etc.) skip checkReleaseAarMetadata.
   config = withProjectBuildGradle(config, (modConfig) => {
     const disableAarBlock = `
@@ -60,13 +60,6 @@ module.exports = function withAsyncStorageSize(config, sizeInMB = 150) {
 allprojects {
     tasks.matching { it.name.contains("AarMetadata") }.configureEach {
         enabled = false
-    }
-}
-subprojects {
-    afterEvaluate { project ->
-        project.tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-            enabled = false
-        }
     }
 }
 `;

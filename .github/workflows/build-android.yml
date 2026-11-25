@@ -79,34 +79,34 @@ jobs:
             exit 1
           fi
           echo "Found APK: $APK_PATH"
-          cp "$APK_PATH" release-artifacts/burka-exam-v1.0.0-build29.apk
+          cp "$APK_PATH" release-artifacts/burka-exam-v1.0.0-build30.apk
           ls -lh release-artifacts/
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: burka-exam-v1.0.0-build29
-          path: release-artifacts/burka-exam-v1.0.0-build29.apk
+          name: burka-exam-v1.0.0-build30
+          path: release-artifacts/burka-exam-v1.0.0-build30.apk
           retention-days: 30
 
       - name: Publish or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-artifacts/burka-exam-v1.0.0-build29.apk
-          name: Burka Exam Mobile v1.0.0 (Build 29)
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0-build.29' }}
+          files: release-artifacts/burka-exam-v1.0.0-build30.apk
+          name: Burka Exam Mobile v1.0.0 (Build 30)
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0-build.30' }}
           body: |
-            ## 📱 Burka Exam Mobile - Android APK (Build 29)
+            ## 📱 Burka Exam Mobile - Android APK (Build 30)
 
             ### 🚀 Highlights & Fixes:
-            - **AarMetadata check disabled for all submodules** via root `build.gradle` `subprojects` block — fixes the `:expo`, `:expo-constants`, `:expo-modules-core` and 6 other module build failures.
+            - **AarMetadata check disabled for all submodules** via root `build.gradle` `allprojects` block and Gradle module patching — fixes the `:expo` and other module build failures cleanly.
             - **minSdkVersion stays at 26** — app still supports all devices from **Android 8.0 Oreo** and above.
             - **Crash on Login Resolved:** Fixed uncaught SQLite errors during login by implementing `safeStorageGet` / `safeStorageSet` throughout `offlineQueue.js`.
             - **Android Keystore (SecureStore):** Critical authentication credentials (`token`, `refreshToken`, `user`) are moved to Android hardware Keystore, completely immune to `SQLITE_FULL` database limit issues.
             - **All 32 Service Tests Passing:** Full regression and unit test suite verified.
 
             ### 📥 How to Install:
-            1. Download `burka-exam-v1.0.0-build29.apk` below.
+            1. Download `burka-exam-v1.0.0-build30.apk` below.
             2. If you have an older crashing build installed on your phone, **uninstall it first** via Android Settings to clear the system crash quarantine.
             3. Open the downloaded APK and tap **Install**.
           draft: false
