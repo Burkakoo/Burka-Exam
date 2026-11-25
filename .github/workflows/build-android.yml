@@ -69,34 +69,32 @@ jobs:
             exit 1
           fi
           echo "Found APK: $APK_PATH"
-          cp "$APK_PATH" release-artifacts/burka-exam-v1.0.0-build32.apk
+          cp "$APK_PATH" release-artifacts/burka-exam-v1.0.0-build33.apk
           ls -lh release-artifacts/
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: burka-exam-v1.0.0-build32
-          path: release-artifacts/burka-exam-v1.0.0-build32.apk
+          name: burka-exam-v1.0.0-build33
+          path: release-artifacts/burka-exam-v1.0.0-build33.apk
           retention-days: 30
 
       - name: Publish or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-artifacts/burka-exam-v1.0.0-build32.apk
-          name: Burka Exam Mobile v1.0.0 (Build 32)
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0-build.32' }}
+          files: release-artifacts/burka-exam-v1.0.0-build33.apk
+          name: Burka Exam Mobile v1.0.0 (Build 33)
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0-build.33' }}
           body: |
-            ## 📱 Burka Exam Mobile - Android APK (Build 32)
+            ## 📱 Burka Exam Mobile - Android APK (Build 33)
 
             ### 🚀 Highlights & Fixes:
-            - **Build Expo Modules from Source (`buildFromSource: [".*"]`):** Compiles Expo SDK 58 modules directly from source against Android 16 (API 36), eliminating the prebuilt `local-maven-repo` API 37 metadata mismatch and preserving `checkReleaseAarMetadata` / `bundleReleaseLocalLintAar` cleanly.
-            - **minSdkVersion stays at 26** — app still supports all devices from **Android 8.0 Oreo** and above.
-            - **Crash on Login Resolved:** Fixed uncaught SQLite errors during login by implementing `safeStorageGet` / `safeStorageSet` throughout `offlineQueue.js`.
-            - **Android Keystore (SecureStore):** Critical authentication credentials (`token`, `refreshToken`, `user`) are moved to Android hardware Keystore, completely immune to `SQLITE_FULL` database limit issues.
+            - **Fixed Post-Login Native Crash (`AssertionError` in `BaseViewManager.setViewState`):** Coerced bottom-tab `accessibilityState={{ selected }}` in `App.js` to strict boolean (`false || null` previously evaluated to `null`, crashing Android native `ReadableNativeMap.getBoolean` on dashboard mount).
+            - **minSdkVersion stays at 26** — app supports all devices from **Android 8.0 Oreo** and above.
             - **All 32 Service Tests Passing:** Full regression and unit test suite verified.
 
             ### 📥 How to Install:
-            1. Download `burka-exam-v1.0.0-build32.apk` below.
+            1. Download `burka-exam-v1.0.0-build33.apk` below.
             2. If you have an older crashing build installed on your phone, **uninstall it first** via Android Settings to clear the system crash quarantine.
             3. Open the downloaded APK and tap **Install**.
           draft: false

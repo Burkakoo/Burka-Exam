@@ -848,13 +848,13 @@ function MainDashboard({ user, onLogout }) {
   const renderBottomTabBar = () => (
     <View style={styles.bottomTabBar}>
       {TABS.map((t) => {
-        const active = (tab === t.id && !selectedSubject) || (selectedSubject && t.id === "exams");
+        const active = Boolean((tab === t.id && !selectedSubject) || (selectedSubject && t.id === "exams"));
         const isLockedTab = !isPremium && t.id === "notes";
         return (
           <TouchableOpacity
             accessibilityLabel={t.label}
             accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
+            accessibilityState={{ selected: Boolean(active) }}
             activeOpacity={0.7}
             key={t.id}
             onPress={() => {

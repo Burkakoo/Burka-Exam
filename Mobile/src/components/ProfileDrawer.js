@@ -212,8 +212,8 @@ const styles = StyleSheet.create({
     marginTop: 1
   },
   closeBtn: {
-    minWidth: TOUCH_TARGET.min,
-    minHeight: TOUCH_TARGET.min,
+    minWidth: TOUCH_TARGET,
+    minHeight: TOUCH_TARGET,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: RADIUS.full
