@@ -5,7 +5,7 @@
  * so the application and interactive exam practice remain functional when offline.
  */
 
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const STATIC_CACHE = `Burka Exam-static-${CACHE_VERSION}`;
 const API_CACHE = `Burka Exam-api-data-${CACHE_VERSION}`;
 const EXAM_SESSION_CACHE = `Burka Exam-exam-sessions-${CACHE_VERSION}`;
@@ -29,9 +29,6 @@ const CACHEABLE_API_PREFIXES = [
   "/api/notes",
   "/api/bookmarks",
   "/api/progress",
-  "/api/payments",
-  "/api/analytics",
-  "/api/users",
   "/api/health"
 ];
 
@@ -473,8 +470,8 @@ self.addEventListener("fetch", (event) => {
           const networkResponse = await fetch(request);
           if (networkResponse.ok) {
             await apiCache.put(cacheKeyUrl, networkResponse.clone());
-            return networkResponse;
           }
+          return networkResponse;
         } catch {
           // Network unavailable -> serve from API_CACHE
         }

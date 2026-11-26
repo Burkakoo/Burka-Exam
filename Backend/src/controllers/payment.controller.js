@@ -69,8 +69,14 @@ export async function listPayments(request, response) {
     if (request.user.role === "student") {
       filter.userId = request.user._id;
     }
+    if (request.query.status && ["pending", "verified", "rejected", "refunded"].includes(request.query.status)) {
+      filter.status = request.query.status;
+    }
 
-    const payments = await Payment.find(filter).sort({ submittedAt: -1 }).limit(200);
+    const payments = await Payment.find(filter)
+      .populate("userId", "displayName email phoneNumber")
+      .sort({ submittedAt: -1 })
+      .limit(200);
     return response.json({ payments });
   } catch (error) {
     console.error(error);

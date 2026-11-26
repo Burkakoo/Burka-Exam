@@ -1,4 +1,4 @@
-const rawApiUrl = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
+const rawApiUrl = (import.meta.env?.VITE_API_URL || "/api").replace(/\/+$/, "");
 const API_URL = rawApiUrl.endsWith("/api") ? rawApiUrl : `${rawApiUrl}/api`;
 
 let webRefreshPromise = null;
@@ -45,9 +45,19 @@ async function tryRefreshWebAccessToken() {
   return webRefreshPromise;
 }
 
-const WEB_API_BACKUP_PREFIX = "ethioprep_web_api_cache_v5:";
+const WEB_API_BACKUP_PREFIX = "ethioprep_web_api_cache_v6:";
 
-// Purge any legacy v1/v2/v3/v4 cached API backups and stale Service Worker caches
+function shouldUseWebBackup(path) {
+  const cleanPath = String(path || "").split("?")[0];
+  return !(
+    cleanPath.startsWith("/auth") ||
+    cleanPath.startsWith("/users") ||
+    cleanPath.startsWith("/payments") ||
+    cleanPath.startsWith("/analytics")
+  );
+}
+
+// Purge any legacy v1..v5 cached API backups and stale Service Worker caches
 if (typeof window !== "undefined") {
   try {
     const keysToRemove = [];
@@ -73,7 +83,10 @@ if (typeof window !== "undefined") {
       .keys()
       .then((names) => {
         names.forEach((name) => {
-          if (name.startsWith("ethioprep-") && !name.endsWith("-v5")) {
+          if (
+            (name.startsWith("ethioprep-") || name.startsWith("Burka Exam-")) &&
+            !name.endsWith("-v5")
+          ) {
             window.caches.delete(name).catch(() => {});
           }
         });
@@ -83,6 +96,7 @@ if (typeof window !== "undefined") {
 }
 
 function saveWebApiBackup(path, data) {
+  if (!shouldUseWebBackup(path)) return;
   try {
     localStorage.setItem(`${WEB_API_BACKUP_PREFIX}${path}`, JSON.stringify(data));
   } catch {
@@ -91,6 +105,7 @@ function saveWebApiBackup(path, data) {
 }
 
 function readWebApiBackup(path) {
+  if (!shouldUseWebBackup(path)) return null;
   try {
     const raw = localStorage.getItem(`${WEB_API_BACKUP_PREFIX}${path}`);
     return raw ? JSON.parse(raw) : null;
@@ -115,36 +130,26 @@ export async function apiRequest(path, options = {}, isRetry = false) {
       !path.startsWith("/auth/login") &&
       !path.startsWith("/auth/refresh-token")
     ) {
-      let newAccessToken = await tryRefreshWebAccessToken();
-      if (!newAccessToken) {
-        try {
-          const authRes = await fetch(`${API_URL}/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: "student@ethioprep.com", password: "studentPassword123" })
-          });
-          const authData = await authRes.json().catch(() => ({}));
-          if (authData?.accessToken) {
-            localStorage.setItem("ethioprep_token", authData.accessToken);
-            if (authData.refreshToken) {
-              localStorage.setItem("ethioprep_refresh_token", authData.refreshToken);
-            }
-            newAccessToken = authData.accessToken;
-          }
-        } catch {
-          // ignore fallback login error
-        }
-      }
+      const newAccessToken = await tryRefreshWebAccessToken();
       if (newAccessToken) {
         return apiRequest(path, options, true);
       }
+      clearSession();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("burka:session-expired"));
+      }
+      const expiredError = new Error("Your staff session expired. Please sign in again.");
+      expiredError.status = 401;
+      throw expiredError;
     }
 
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      if (method === "GET") {
-        const cached = readWebApiBackup(path);
-        if (cached) return cached;
+      if (response.status === 401 && !path.startsWith("/auth/login")) {
+        clearSession();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("burka:session-expired"));
+        }
       }
       const error = new Error(body.error || "Request failed.");
       error.status = response.status;
@@ -159,7 +164,7 @@ export async function apiRequest(path, options = {}, isRetry = false) {
     }
     return body;
   } catch (err) {
-    if (method === "GET") {
+    if (!err?.status && method === "GET") {
       const cached = readWebApiBackup(path);
       if (cached) return cached;
     }

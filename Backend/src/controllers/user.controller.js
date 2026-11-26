@@ -5,6 +5,11 @@ export async function listUsers(request, response) {
     const filter = {};
     if (request.query.role) filter.role = request.query.role;
     if (request.query.stream) filter.stream = request.query.stream;
+    if (request.query.status && ["pending", "active", "suspended", "deleted"].includes(request.query.status)) {
+      filter.status = request.query.status;
+    }
+    if (request.query.emailVerified === "true") filter.emailVerified = true;
+    if (request.query.emailVerified === "false") filter.emailVerified = false;
     if (request.query.search) {
       const q = String(request.query.search).trim();
       filter.$or = [

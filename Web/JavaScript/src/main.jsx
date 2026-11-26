@@ -31,6 +31,7 @@ import {
   MoonIcon,
   PlusIcon,
   ReceiptIcon,
+  RefreshCwIcon,
   ShieldCheckIcon,
   SmartphoneIcon,
   SunIcon,
@@ -1305,6 +1306,7 @@ function ExamsPage({ user }) {
 function PaymentsPage({ user }) {
   const [payments, setPayments] = useState([]);
   const [dashboard, setDashboard] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState({ text: "", type: "success" });
   const [verifying, setVerifying] = useState(null);
@@ -1314,12 +1316,16 @@ function PaymentsPage({ user }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [pRes, dRes] = await Promise.all([apiRequest("/payments"), apiRequest("/payments/dashboard")]);
-      setPayments(pRes.payments);
+      const q = statusFilter !== "all" ? `?status=${encodeURIComponent(statusFilter)}` : "";
+      const [pRes, dRes] = await Promise.all([
+        apiRequest(`/payments${q}`),
+        canVerify ? apiRequest("/payments/dashboard") : Promise.resolve(null)
+      ]);
+      setPayments(pRes.payments || []);
       setDashboard(dRes);
     } catch (e) { setMsg({ text: e.message, type: "error" }); }
     finally { setLoading(false); }
-  }, []);
+  }, [statusFilter, canVerify]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1340,8 +1346,27 @@ function PaymentsPage({ user }) {
     <>
       <div className="page-header">
         <div className="breadcrumb"><span>Finance</span><span className="sep">›</span><span>Payments</span></div>
-        <h1>Payment Management</h1>
-        <p className="page-desc">Review, verify, and reject student subscription payments.</p>
+        <div className="page-header-row">
+          <div>
+            <h1>Payment Management</h1>
+            <p className="page-desc">Review, verify, and reject student subscription payments.</p>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {["all", "pending", "verified", "rejected"].map(st => (
+              <button
+                key={st}
+                type="button"
+                className={`btn btn-sm ${statusFilter === st ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setStatusFilter(st)}
+              >
+                {st === "all" ? "All" : st === "pending" ? `Pending${dashboard?.pendingPayments ? ` (${dashboard.pendingPayments})` : ""}` : st.charAt(0).toUpperCase() + st.slice(1)}
+              </button>
+            ))}
+            <button type="button" className="btn btn-sm btn-secondary" onClick={load} disabled={loading} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <RefreshCwIcon size={14} /> Refresh
+            </button>
+          </div>
+        </div>
       </div>
       <div className="content-body">
         <Notice text={msg.text} type={msg.type} onClose={() => setMsg({ text: "" })} />
@@ -1365,7 +1390,7 @@ function PaymentsPage({ user }) {
         )}
 
         <div className="panel">
-          <div className="panel-header"><span className="panel-title">All Payments ({payments.length})</span></div>
+          <div className="panel-header"><span className="panel-title">{statusFilter === "all" ? "All Payments" : `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Payments`} ({payments.length})</span></div>
           {loading ? <SkeletonTable /> : (
             <div className="table-wrap">
               <table>
@@ -1385,7 +1410,10 @@ function PaymentsPage({ user }) {
                     <tr><td colSpan={7}><div className="empty-state"><div className="empty-icon"><CreditCardIcon size={26} strokeWidth={1.75} /></div><h3>No payments yet</h3></div></td></tr>
                   ) : payments.map(p => (
                     <tr key={p._id}>
-                      <td><strong>{p.fullName || "Student"}</strong></td>
+                      <td>
+                        <strong>{p.fullName || p.userId?.displayName || "Student"}</strong>
+                        {p.userId?.email && <div className="td-muted" style={{ fontSize: 12 }}>{p.userId.email}</div>}
+                      </td>
                       <td><strong>{p.amount?.toLocaleString()} {p.currency || "ETB"}</strong></td>
                       <td><span className="badge badge-info">{p.provider?.toUpperCase()}</span></td>
                       <td className="td-muted" style={{ fontSize: 12 }}>
@@ -1886,6 +1914,7 @@ function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState({ text: "", type: "success" });
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [showAddModal, setShowAddModal] = useState(false);
   const [newStaff, setNewStaff] = useState({
     displayName: "",
@@ -1899,7 +1928,10 @@ function UsersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const q = search ? `?search=${encodeURIComponent(search)}` : "";
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      const q = params.toString() ? `?${params.toString()}` : "";
       const res = await apiRequest(`/users${q}`);
       setUsers(res.users || []);
     } catch (e) {
@@ -1907,7 +1939,7 @@ function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1979,13 +2011,26 @@ function UsersPage() {
             <h1>User Account Management</h1>
             <p className="page-desc">View registered students and staff, verify emails, reassign roles, and manage access privileges.</p>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <input
               placeholder="Search by name or email…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ width: 240 }}
+              style={{ width: 220 }}
             />
+            {["all", "pending", "active", "suspended"].map(st => (
+              <button
+                key={st}
+                type="button"
+                className={`btn btn-sm ${statusFilter === st ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setStatusFilter(st)}
+              >
+                {st === "all" ? "All" : st.charAt(0).toUpperCase() + st.slice(1)}
+              </button>
+            ))}
+            <button type="button" className="btn btn-sm btn-secondary" onClick={load} disabled={loading} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <RefreshCwIcon size={14} /> Refresh
+            </button>
             <button className="btn btn-primary" onClick={() => setShowAddModal(true)} style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <PlusIcon size={16} /> Add Staff Member
             </button>
@@ -2560,18 +2605,28 @@ function App() {
 
   const [user, setUser] = useState(() => {
     try {
+      const token = localStorage.getItem("ethioprep_token");
       const u = JSON.parse(localStorage.getItem("ethioprep_user") || "null");
-      // If a student was previously saved in localStorage, clear it so they see the staff portal notice
-      if (u && u.role === "student") {
-        localStorage.removeItem("ethioprep_token");
-        localStorage.removeItem("ethioprep_user");
+      // Require an active token and reject student sessions in the staff portal
+      if (!token || !u || u.role === "student") {
+        clearSession();
         return null;
       }
       return u;
     } catch {
+      clearSession();
       return null;
     }
   });
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      clearSession();
+      setUser(null);
+    };
+    window.addEventListener("burka:session-expired", handleSessionExpired);
+    return () => window.removeEventListener("burka:session-expired", handleSessionExpired);
+  }, []);
 
   if (!user || user.role === "student") {
     return (
