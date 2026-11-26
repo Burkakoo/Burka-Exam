@@ -33,7 +33,7 @@ export async function purgeLegacyCacheKeys() {
   }
 }
 
-export async function downloadOfflineBundle(userStream = "all", onProgress) {
+export async function downloadOfflineBundle(userStream = "natural", onProgress) {
   try {
     if (onProgress) onProgress("Preparing offline storage...");
 
@@ -42,8 +42,12 @@ export async function downloadOfflineBundle(userStream = "all", onProgress) {
 
     if (onProgress) onProgress("Connecting to server...");
 
-    // Request full bundle (all streams: Natural, Social, and Both across Grades 9–12)
-    const bundle = await request("/exams/offline-bundle?stream=all");
+    const normalizedStream = ["natural", "social"].includes(String(userStream || "").toLowerCase())
+      ? String(userStream).toLowerCase()
+      : "natural";
+
+    // Request stream-scoped bundle (student's registered stream + common subjects)
+    const bundle = await request(`/exams/offline-bundle?stream=${normalizedStream}`);
 
     if (!bundle || !Array.isArray(bundle.exams) || !Array.isArray(bundle.questions)) {
       throw new Error("Invalid offline bundle received from server.");

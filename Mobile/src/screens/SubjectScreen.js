@@ -15,29 +15,16 @@ import { EmptyState } from "../components/EmptyState.js";
 import { Icon } from "../components/Icon.js";
 import { Notice } from "../components/Notice.js";
 import { request } from "../services/api.js";
+import {
+  getStudentStream,
+  getSubjectDiscipline,
+  matchesStudentStream
+} from "../utils/stream.js";
 import { COLORS, RADIUS, SHADOW, SPACING } from "../utils/theme.js";
 
 function getYear(exam) {
   if (exam.examYear || exam.year) return String(exam.examYear || exam.year);
   return (exam.title || "").match(/\b(?:19|20)\d{2}\b/)?.[0] || "Practice";
-}
-
-function getSubjectDiscipline(subj) {
-  if (!subj) return "";
-  const code = String(subj.code || "").toUpperCase();
-  const name = String(subj.name || "").toLowerCase();
-
-  if (code.includes("BIO") || name.includes("bio")) return "BIO";
-  if (code.includes("CHEM") || name.includes("chem")) return "CHEM";
-  if (code.includes("PHYS") || name.includes("phys")) return "PHYS";
-  if (code.includes("MATH") || name.includes("math")) return "MATH";
-  if (code.includes("ENG") || name.includes("eng")) return "ENG";
-  if (code.includes("GEOG") || name.includes("geog")) return "GEOG";
-  if (code.includes("HIST") || name.includes("hist")) return "HIST";
-  if (code.includes("ECON") || name.includes("econ")) return "ECON";
-  if (code.includes("APTITUDE") || name.includes("aptitude") || code.includes("SAT") || name.includes("sat")) return "SAT";
-
-  return code.split("_")[0] || code;
 }
 
 const GRADE_BADGE_COLORS = {
@@ -76,18 +63,20 @@ export function SubjectScreen({
   const [subjectChapters, setSubjectChapters] = useState([]);
   const [notesExpanded, setNotesExpanded] = useState(false);
 
+  const studentStream = getStudentStream(user);
   const curDiscipline = getSubjectDiscipline(subject);
   const curSubjId = String(subject?._id || subject?.id || "");
 
-  // All subjects in this discipline (Grades 9–12)
+  // All subjects in this discipline (Grades 9–12) matching student's stream
   const disciplineSubjects = useMemo(() => {
     const matched = (subjects || []).filter((s) => {
+      if (!matchesStudentStream(s, studentStream)) return false;
       if (String(s._id || s.id) === curSubjId) return true;
       return curDiscipline && getSubjectDiscipline(s) === curDiscipline;
     });
     if (matched.length === 0 && subject) return [subject];
     return matched;
-  }, [subjects, curSubjId, curDiscipline, subject]);
+  }, [subjects, curSubjId, curDiscipline, subject, studentStream]);
 
   // Load chapters for all subjects in this discipline
   useEffect(() => {
@@ -138,9 +127,10 @@ export function SubjectScreen({
     };
   }, [disciplineSubjects]);
 
-  // Filter exams that belong to this subject / discipline
+  // Filter exams that belong to this subject / discipline and student's stream
   const subjectExams = useMemo(() => {
     return exams.filter((exam) => {
+      if (!matchesStudentStream(exam, studentStream, subjects)) return false;
       const examSubj = exam.subjectId;
       const examSubjId = String(examSubj?._id || examSubj || "");
       if (curSubjId && examSubjId === curSubjId) return true;
@@ -287,6 +277,7 @@ export function SubjectScreen({
   // Subject notes
   const subjectNotes = useMemo(() => {
     return notes.filter((n) => {
+      if (n?.isPublic !== false && !matchesStudentStream(n, studentStream, subjects)) return false;
       const sId = String(n.subjectId?._id || n.subjectId || "");
       if (curSubjId && sId === curSubjId) return true;
       const nSubj = n.subjectId;
@@ -296,7 +287,7 @@ export function SubjectScreen({
       }
       return false;
     });
-  }, [notes, curSubjId, curDiscipline]);
+  }, [notes, curSubjId, curDiscipline, studentStream, subjects]);
 
   return (
     <View style={styles.screenWrapper}>

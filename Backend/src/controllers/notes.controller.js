@@ -31,12 +31,29 @@ export async function listNotes(request, response) {
       }
     }
 
-    const notes = await Note.find(filter)
+    const rawNotes = await Note.find(filter)
       .populate("subjectId", "name code stream gradeLevel")
       .populate("chapterId", "title order")
       .populate("uploadedBy", "displayName")
       .sort({ updatedAt: -1 })
       .limit(300);
+
+    const studentStream =
+      !isStaff && ["natural", "social"].includes(String(request.user?.stream || "").toLowerCase())
+        ? String(request.user.stream).toLowerCase()
+        : null;
+
+    const notes = studentStream
+      ? rawNotes.filter((note) => {
+          if (!note.isPublic && String(note.userId || "") === String(request.user._id)) {
+            return true;
+          }
+          const subjStream = String(note.subjectId?.stream || "").toLowerCase();
+          if (subjStream === "both") return true;
+          if (subjStream === "natural" || subjStream === "social") return subjStream === studentStream;
+          return true;
+        })
+      : rawNotes;
 
     return response.json({ notes });
   } catch (error) {

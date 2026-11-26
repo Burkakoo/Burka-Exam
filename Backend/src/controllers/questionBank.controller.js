@@ -6,8 +6,16 @@ export async function getSubjects(request, response) {
   try {
     const canManage = ["admin", "teacher", "content_manager"].includes(request.user?.role);
     const filter = request.query.includeInactive === "true" && canManage ? {} : { isActive: true };
-    if (request.query.stream && ["natural", "social"].includes(request.query.stream)) {
-      filter.$or = [{ stream: request.query.stream }, { stream: "both" }];
+    const studentStream =
+      !canManage && ["natural", "social"].includes(String(request.user?.stream || "").toLowerCase())
+        ? String(request.user.stream).toLowerCase()
+        : null;
+    const requestedStream = ["natural", "social"].includes(String(request.query.stream || "").toLowerCase())
+      ? String(request.query.stream).toLowerCase()
+      : null;
+    const effectiveStream = studentStream || requestedStream;
+    if (effectiveStream) {
+      filter.$or = [{ stream: effectiveStream }, { stream: "both" }];
     }
     if (request.query.gradeLevel) {
       filter.gradeLevel = request.query.gradeLevel;

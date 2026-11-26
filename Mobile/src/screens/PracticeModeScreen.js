@@ -15,6 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon.js";
 import { request } from "../services/api.js";
+import { getStudentStream, matchesStudentStream } from "../utils/stream.js";
 import { COLORS, RADIUS, SPACING } from "../utils/theme.js";
 
 const { width } = Dimensions.get("window");
@@ -103,23 +104,10 @@ export function PracticeModeScreen({
   const currentQuestion = questions[currentIndex] || null;
 
   // Filter subjects based on student registered stream and grade
-  const studentStream = String(user?.stream || "natural").toLowerCase();
+  const studentStream = getStudentStream(user);
   const filteredSubjects = useMemo(() => {
     return subjects.filter((s) => {
-      const sStream = String(s.stream || "").toLowerCase();
-      const code = String(s.code || "").toUpperCase();
-      const name = String(s.name || "").toLowerCase();
-
-      if (studentStream === "natural") {
-        if (sStream === "social") return false;
-        if (["HIST", "GEOG", "ECON", "MATH_SOC"].some((k) => code.includes(k))) return false;
-        if (name.includes("history") || name.includes("geography") || name.includes("economics") || name.includes("social studies")) return false;
-      } else if (studentStream === "social") {
-        if (sStream === "natural") return false;
-        if (["BIO", "CHEM", "PHYS", "MATH_NAT"].some((k) => code.includes(k))) return false;
-        if (name.includes("biology") || name.includes("chemistry") || name.includes("physics")) return false;
-      }
-
+      if (!matchesStudentStream(s, studentStream)) return false;
       if (selectedGrade !== "all" && s.gradeLevel !== `grade-${selectedGrade}`) {
         return false;
       }

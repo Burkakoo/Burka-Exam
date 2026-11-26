@@ -7,6 +7,12 @@ import { Input } from "../components/Input.js";
 import { Notice } from "../components/Notice.js";
 import { Icon } from "../components/Icon.js";
 import { EmptyState } from "../components/EmptyState.js";
+import {
+  getStudentStream,
+  getSubjectDiscipline,
+  matchesStudentStream,
+  subjectSupportsGrade
+} from "../utils/stream.js";
 import { COLORS, RADIUS, SHADOW, SPACING } from "../utils/theme.js";
 
 const GRADES = [9, 10, 11, 12];
@@ -26,30 +32,6 @@ const SUBJECT_ICONS = {
 function subjectIcon(subject) {
   const key = Object.keys(SUBJECT_ICONS).find((code) => (subject?.code || "").includes(code));
   return key ? SUBJECT_ICONS[key] : "book-outline";
-}
-
-function getSubjectDiscipline(subj) {
-  if (!subj) return "";
-  const code = String(subj.code || "").toUpperCase();
-  const name = String(subj.name || "").toLowerCase();
-
-  if (code.includes("BIO") || name.includes("bio")) return "BIO";
-  if (code.includes("CHEM") || name.includes("chem")) return "CHEM";
-  if (code.includes("PHYS") || name.includes("phys")) return "PHYS";
-  if (code.includes("MATH") || name.includes("math")) return "MATH";
-  if (code.includes("ENG") || name.includes("eng")) return "ENG";
-  if (code.includes("GEOG") || name.includes("geog")) return "GEOG";
-  if (code.includes("HIST") || name.includes("hist")) return "HIST";
-  if (code.includes("ECON") || name.includes("econ")) return "ECON";
-  if (code.includes("APTITUDE") || name.includes("aptitude")) return "APTITUDE";
-  if (code.includes("SAT") || name.includes("sat")) return "SAT";
-
-  return code.split("_")[0] || code;
-}
-
-function subjectSupportsGrade(subject, grade) {
-  const levels = String(subject?.gradeLevel || "").match(/\d+/g)?.map(Number) || [];
-  return !levels.length || (levels.length > 1 ? grade >= Math.min(...levels) && grade <= Math.max(...levels) : levels.includes(grade));
 }
 
 function formatGradeBadge(gradeLevel) {
@@ -120,18 +102,20 @@ export function NotesScreen({
   const [personalBody, setPersonalBody] = useState("");
   const [personalError, setPersonalError] = useState("");
 
-  const isNatural = (user?.stream || "natural") === "natural";
+  const studentStream = getStudentStream(user);
 
   const streamSubjects = useMemo(
+    () => subjects.filter((subject) => matchesStudentStream(subject, studentStream)),
+    [subjects, studentStream]
+  );
+
+  const streamNotes = useMemo(
     () =>
-      subjects.filter((subject) => {
-        if (subject.stream) return subject.stream === "both" || subject.stream === (isNatural ? "natural" : "social");
-        const code = subject.code || "";
-        return isNatural
-          ? !["HIST", "GEOG", "ECON", "MATH_SOC"].includes(code)
-          : !["PHYS", "CHEM", "BIO", "MATH_NAT"].includes(code);
-      }),
-    [subjects, isNatural]
+      notes.filter(
+        (note) =>
+          note?.isPublic === false || matchesStudentStream(note, studentStream, subjects)
+      ),
+    [notes, studentStream, subjects]
   );
 
   useEffect(() => {
@@ -152,8 +136,8 @@ export function NotesScreen({
   );
 
   const subjectNotes = useMemo(
-    () => getNotesForGradeSubject(notes, selectedSubject, selectedGrade, subjects),
-    [notes, selectedSubject, selectedGrade, subjects]
+    () => getNotesForGradeSubject(streamNotes, selectedSubject, selectedGrade, subjects),
+    [streamNotes, selectedSubject, selectedGrade, subjects]
   );
 
   const officialNotes = useMemo(
@@ -440,7 +424,7 @@ export function NotesScreen({
           ) : (
             <View style={styles.subjectGrid}>
               {gradeSubjects.map((subject) => {
-                const count = getNotesForGradeSubject(notes, subject, selectedGrade, subjects).length;
+                const count = getNotesForGradeSubject(streamNotes, subject, selectedGrade, subjects).length;
                 return (
                   <TouchableOpacity
                     activeOpacity={0.8}

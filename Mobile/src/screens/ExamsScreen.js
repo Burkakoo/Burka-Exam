@@ -4,6 +4,12 @@ import { Button } from "../components/Button.js";
 import { Card } from "../components/Card.js";
 import { Icon } from "../components/Icon.js";
 import { EmptyState } from "../components/EmptyState.js";
+import {
+  getStudentStream,
+  getSubjectDiscipline,
+  isGrade12Subject,
+  matchesStudentStream
+} from "../utils/stream.js";
 import { COLORS, RADIUS, SHADOW, SPACING } from "../utils/theme.js";
 
 const SUBJECT_METADATA = {
@@ -19,33 +25,9 @@ const SUBJECT_METADATA = {
   ECON: { name: "Economics", icon: "trending-up-outline", stream: "social", color: "#EA580C" }
 };
 
-function getSubjectDiscipline(subj) {
-  if (!subj) return "";
-  const code = String(subj.code || "").toUpperCase();
-  const name = String(subj.name || "").toLowerCase();
-
-  if (code.includes("BIO") || name.includes("bio")) return "BIO";
-  if (code.includes("CHEM") || name.includes("chem")) return "CHEM";
-  if (code.includes("PHYS") || name.includes("phys")) return "PHYS";
-  if (code.includes("MATH") || name.includes("math")) return "MATH";
-  if (code.includes("ENG") || name.includes("eng")) return "ENG";
-  if (code.includes("GEOG") || name.includes("geog")) return "GEOG";
-  if (code.includes("HIST") || name.includes("hist")) return "HIST";
-  if (code.includes("ECON") || name.includes("econ")) return "ECON";
-  if (code.includes("APTITUDE") || name.includes("aptitude") || code.includes("SAT") || name.includes("sat")) return "SAT";
-
-  return code.split("_")[0] || code;
-}
-
 function getYear(exam) {
   if (exam.examYear || exam.year) return String(exam.examYear || exam.year);
   return (exam.title || "").match(/\b(?:19|20)\d{2}\b/)?.[0] || "Practice";
-}
-
-function formatShortGrade(gradeLevel) {
-  if (!gradeLevel) return "";
-  const match = String(gradeLevel).match(/grade-(\d+)/i);
-  return match ? `G${match[1]}` : String(gradeLevel).toUpperCase();
 }
 
 export function ExamsScreen({
@@ -58,18 +40,21 @@ export function ExamsScreen({
   isPremium = false,
   onNavigatePayments
 }) {
-  const userStream = user?.stream || "natural";
-  const [selectedStreamFilter, setSelectedStreamFilter] = useState("all");
+  const userStream = getStudentStream(user);
+  const streamLabel = userStream === "social" ? "Social Science" : "Natural Science";
   const [searchQuery, setSearchQuery] = useState("");
-  const [examTabMode, setExamTabMode] = useState("subjects"); // "subjects" | "papers"
 
-  // 1. Group subjects by discipline (Mathematics, Biology, Chemistry, Physics, etc.)
+  // 1. Group stream-eligible subjects by discipline (Mathematics, Biology, Chemistry, Physics, etc.)
   const disciplineCards = useMemo(() => {
     const map = new Map();
 
     (subjects || []).forEach((subj) => {
+      if (!matchesStudentStream(subj, userStream)) return;
       const disc = getSubjectDiscipline(subj);
       if (!disc) return;
+      const metaStream = SUBJECT_METADATA[disc]?.stream || subj.stream || "both";
+      if (metaStream !== "both" && metaStream !== userStream) return;
+
       if (!map.has(disc)) {
         map.set(disc, {
           discipline: disc,
@@ -77,7 +62,7 @@ export function ExamsScreen({
           subjects: [],
           name: SUBJECT_METADATA[disc]?.name || subj.name || disc,
           icon: SUBJECT_METADATA[disc]?.icon || "book-outline",
-          stream: SUBJECT_METADATA[disc]?.stream || subj.stream || "both",
+          stream: metaStream,
           color: SUBJECT_METADATA[disc]?.color || COLORS.tealLight,
           exams: [],
           totalQuestions: 0,
@@ -86,10 +71,14 @@ export function ExamsScreen({
       }
       const entry = map.get(disc);
       entry.subjects.push(subj);
+      if (isGrade12Subject(subj)) {
+        entry.representativeSubject = subj;
+      }
     });
 
-    // Map exams to discipline
+    // Map stream-eligible exams to discipline
     (exams || []).forEach((exam) => {
+      if (!matchesStudentStream(exam, userStream, subjects)) return;
       const examSubj = exam.subjectId;
       const examSubjObj = typeof examSubj === "object" && examSubj !== null
         ? examSubj
@@ -123,29 +112,20 @@ export function ExamsScreen({
     });
 
     return Array.from(map.values());
-  }, [subjects, exams]);
+  }, [subjects, exams, userStream]);
 
-  // Filter discipline cards by stream and search
+  // Filter discipline cards by search
   const filteredDisciplineCards = useMemo(() => {
     return disciplineCards.filter((card) => {
-      // Stream filter
-      if (selectedStreamFilter === "natural") {
-        if (card.stream === "social") return false;
-      } else if (selectedStreamFilter === "social") {
-        if (card.stream === "natural") return false;
-      }
-
-      // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchName = card.name.toLowerCase().includes(q);
         const matchDisc = card.discipline.toLowerCase().includes(q);
         if (!matchName && !matchDisc) return false;
       }
-
       return true;
     });
-  }, [disciplineCards, selectedStreamFilter, searchQuery]);
+  }, [disciplineCards, searchQuery]);
 
   return (
     <ScrollView
@@ -158,48 +138,8 @@ export function ExamsScreen({
       <View style={styles.introHeader}>
         <Text style={styles.screenTitle}>Examinations</Text>
         <Text style={styles.screenSubtitle}>
-          Select a subject to practise national entrance and model exam questions by year.
+          {streamLabel} · Select a subject to practise national entrance and model exam questions by year.
         </Text>
-      </View>
-
-      {/* Stream Filter Pills */}
-      <View style={styles.filterBar}>
-        <TouchableOpacity
-          onPress={() => setSelectedStreamFilter("all")}
-          style={[styles.filterPill, selectedStreamFilter === "all" && styles.filterPillActive]}
-        >
-          <Text style={[styles.filterPillText, selectedStreamFilter === "all" && styles.filterPillTextActive]}>
-            All Streams
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => setSelectedStreamFilter("natural")}
-          style={[styles.filterPill, selectedStreamFilter === "natural" && styles.filterPillActive]}
-        >
-          <Icon
-            color={selectedStreamFilter === "natural" ? "#FFFFFF" : COLORS.textMuted}
-            name="flask-outline"
-            size={14}
-          />
-          <Text style={[styles.filterPillText, selectedStreamFilter === "natural" && styles.filterPillTextActive]}>
-            Natural Science
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => setSelectedStreamFilter("social")}
-          style={[styles.filterPill, selectedStreamFilter === "social" && styles.filterPillActive]}
-        >
-          <Icon
-            color={selectedStreamFilter === "social" ? "#FFFFFF" : COLORS.textMuted}
-            name="library-outline"
-            size={14}
-          />
-          <Text style={[styles.filterPillText, selectedStreamFilter === "social" && styles.filterPillTextActive]}>
-            Social Science
-          </Text>
-        </TouchableOpacity>
       </View>
 
       {/* Search Input */}
@@ -207,7 +147,7 @@ export function ExamsScreen({
         <Icon color={COLORS.textMuted} name="search-outline" size={18} />
         <TextInput
           onChangeText={setSearchQuery}
-          placeholder="Search subjects (e.g. Mathematics, Biology)..."
+          placeholder="Search your stream subjects..."
           placeholderTextColor={COLORS.textMuted}
           style={styles.searchInput}
           value={searchQuery}
@@ -230,7 +170,7 @@ export function ExamsScreen({
       {filteredDisciplineCards.length === 0 ? (
         <EmptyState
           icon="document-text-outline"
-          message="Try adjusting your search query or stream filter."
+          message="Try adjusting your search query."
           title="No subjects found"
         />
       ) : (

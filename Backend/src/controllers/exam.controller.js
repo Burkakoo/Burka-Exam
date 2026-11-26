@@ -90,6 +90,10 @@ async function getAllowedDisciplineSubjectIds(primarySubject) {
 export async function listPublishedExams(request, response) {
   try {
     const canManage = ["admin", "teacher", "content_manager"].includes(request.user?.role);
+    const studentStream =
+      !canManage && ["natural", "social"].includes(String(request.user?.stream || "").toLowerCase())
+        ? String(request.user.stream).toLowerCase()
+        : null;
     const filter = request.query.includeAll === "true" && canManage ? {} : { status: "published" };
     const [rawExams, allSubjects] = await Promise.all([
       Exam.find(filter)
@@ -98,13 +102,25 @@ export async function listPublishedExams(request, response) {
         .sort({ examYear: -1, createdAt: -1 })
         .limit(100)
         .lean(),
-      Subject.find().select("_id name code gradeLevel").lean()
+      Subject.find().select("_id name code gradeLevel stream").lean()
     ]);
 
     const subjectById = new Map(allSubjects.map((s) => [String(s._id), s]));
 
     const exams = await Promise.all(
-      rawExams.map(async (exam) => {
+      (studentStream
+        ? rawExams.filter((exam) => {
+            const examSubj =
+              typeof exam.subjectId === "object" && exam.subjectId
+                ? exam.subjectId
+                : subjectById.get(String(exam.subjectId || ""));
+            const subjStream = String(examSubj?.stream || "").toLowerCase();
+            if (subjStream === "both") return true;
+            if (subjStream === "natural" || subjStream === "social") return subjStream === studentStream;
+            return true;
+          })
+        : rawExams
+      ).map(async (exam) => {
         if (!Array.isArray(exam.questionIds) || exam.questionIds.length === 0) {
           return { ...exam, chapterBreakdown: [] };
         }
@@ -151,12 +167,18 @@ export async function listPublishedExams(request, response) {
 
 export async function getOfflineExamBundle(request, response) {
   try {
+    const canManage = ["admin", "teacher", "content_manager"].includes(request.user?.role);
+    const studentStream =
+      !canManage && ["natural", "social"].includes(String(request.user?.stream || "").toLowerCase())
+        ? String(request.user.stream).toLowerCase()
+        : null;
     const reqStream = request.query?.stream ? String(request.query.stream).toLowerCase() : null;
+    const effectiveStream = studentStream || (reqStream && ["natural", "social"].includes(reqStream) ? reqStream : null);
     const reqSubjectId = request.query?.subjectId;
 
     const subjFilter = { isActive: true };
-    if (reqStream && ["natural", "social"].includes(reqStream) && reqStream !== "all") {
-      subjFilter.stream = { $in: [reqStream, "both"] };
+    if (effectiveStream) {
+      subjFilter.stream = { $in: [effectiveStream, "both"] };
     }
     if (reqSubjectId && mongoose.isValidObjectId(reqSubjectId)) {
       subjFilter._id = reqSubjectId;
@@ -167,7 +189,7 @@ export async function getOfflineExamBundle(request, response) {
       examFilter.subjectId = reqSubjectId;
     }
 
-    const [rawExams, allSubjects, allChapters, allNotes] = await Promise.all([
+    const [rawExams, allSubjects, rawChapters, rawNotes] = await Promise.all([
       Exam.find(examFilter)
         .populate("subjectId", "name code stream gradeLevel")
         .sort({ examYear: -1, createdAt: -1 })
@@ -185,12 +207,21 @@ export async function getOfflineExamBundle(request, response) {
     ]);
 
     const allowedSubjectIds = new Set(allSubjects.map((s) => String(s._id)));
-    const publishedExams = reqStream && ["natural", "social"].includes(reqStream) && reqStream !== "all"
+    const publishedExams = effectiveStream
       ? rawExams.filter((e) => {
           const sId = e.subjectId?._id ? String(e.subjectId._id) : String(e.subjectId || "");
           return allowedSubjectIds.has(sId);
         })
       : rawExams;
+    const allChapters = effectiveStream
+      ? rawChapters.filter((c) => allowedSubjectIds.has(String(c.subjectId || "")))
+      : rawChapters;
+    const allNotes = effectiveStream
+      ? rawNotes.filter((n) => {
+          const sId = n.subjectId?._id ? String(n.subjectId._id) : String(n.subjectId || "");
+          return !sId || allowedSubjectIds.has(sId);
+        })
+      : rawNotes;
 
     const chapterById = new Map(allChapters.map((c) => [String(c._id), c]));
     const subjectById = new Map(allSubjects.map((s) => [String(s._id), s]));
@@ -596,7 +627,7 @@ export async function startExamAttempt(request, response) {
     const [questionsRaw, allChapters, allSubjects] = await Promise.all([
       Question.find(questionFilter).lean(),
       Chapter.find().select("_id title order subjectId").lean(),
-      Subject.find().select("_id name code gradeLevel").lean()
+      Subject.find().select("_id name code gradeLevel stream").lean()
     ]);
 
     const chapterById = new Map(allChapters.map((c) => [String(c._id), c]));

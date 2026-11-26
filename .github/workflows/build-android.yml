@@ -69,32 +69,33 @@ jobs:
             exit 1
           fi
           echo "Found APK: $APK_PATH"
-          cp "$APK_PATH" release-artifacts/burka-exam-v1.0.0-build33.apk
+          cp "$APK_PATH" release-artifacts/burka-exam-v1.0.0-build34.apk
           ls -lh release-artifacts/
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: burka-exam-v1.0.0-build33
-          path: release-artifacts/burka-exam-v1.0.0-build33.apk
+          name: burka-exam-v1.0.0-build34
+          path: release-artifacts/burka-exam-v1.0.0-build34.apk
           retention-days: 30
 
       - name: Publish or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-artifacts/burka-exam-v1.0.0-build33.apk
-          name: Burka Exam Mobile v1.0.0 (Build 33)
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0-build.33' }}
+          files: release-artifacts/burka-exam-v1.0.0-build34.apk
+          name: Burka Exam Mobile v1.0.0 (Build 34)
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0-build.34' }}
           body: |
-            ## 📱 Burka Exam Mobile - Android APK (Build 33)
+            ## 📱 Burka Exam Mobile - Android APK (Build 34)
 
             ### 🚀 Highlights & Fixes:
-            - **Fixed Post-Login Native Crash (`AssertionError` in `BaseViewManager.setViewState`):** Coerced bottom-tab `accessibilityState={{ selected }}` in `App.js` to strict boolean (`false || null` previously evaluated to `null`, crashing Android native `ReadableNativeMap.getBoolean` on dashboard mount).
+            - **Stream-Scoped Content for Students:** Subjects, Exams, and Study Notes strictly display only the student's registered stream (`Natural Science` or `Social Science` + shared common subjects) — removed the "All Streams" toggle from Exams.
+            - **Grade 12 Home Screen:** Removed the Grade 9–12 selector from Home screen so it directly displays Grade 12 subjects for the student's stream.
             - **minSdkVersion stays at 26** — app supports all devices from **Android 8.0 Oreo** and above.
-            - **All 32 Service Tests Passing:** Full regression and unit test suite verified.
+            - **All Service & Stream Tests Passing:** Full regression and unit test suite verified.
 
             ### 📥 How to Install:
-            1. Download `burka-exam-v1.0.0-build33.apk` below.
+            1. Download `burka-exam-v1.0.0-build34.apk` below.
             2. If you have an older crashing build installed on your phone, **uninstall it first** via Android Settings to clear the system crash quarantine.
             3. Open the downloaded APK and tap **Install**.
           draft: false
