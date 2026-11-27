@@ -7,6 +7,8 @@ import { Input } from "../components/Input.js";
 import { Notice } from "../components/Notice.js";
 import { Icon } from "../components/Icon.js";
 import { EmptyState } from "../components/EmptyState.js";
+import { OfflinePdfViewer } from "../components/OfflinePdfViewer.js";
+import { isNotePdfCached } from "../services/pdfCache.js";
 import {
   getStudentStream,
   getSubjectDiscipline,
@@ -97,6 +99,7 @@ export function NotesScreen({
   const [selectedGrade, setSelectedGrade] = useState(9);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedNote, setSelectedNote] = useState(null);
+  const [readerTab, setReaderTab] = useState("pdf");
   const [showPersonalForm, setShowPersonalForm] = useState(false);
   const [personalTitle, setPersonalTitle] = useState("");
   const [personalBody, setPersonalBody] = useState("");
@@ -314,22 +317,35 @@ export function NotesScreen({
             />
           ) : (
             <View style={styles.notesList}>
-              {officialNotes.map((note) => (
+              {officialNotes.map((note) => {
+                const hasPdf = Boolean(note.pdfFileId);
+                const pdfCached = hasPdf && isNotePdfCached(note);
+                const sizeMb = note.pdfFileSize ? `${(note.pdfFileSize / (1024 * 1024)).toFixed(1)} MB` : "";
+                return (
                 <TouchableOpacity
                   activeOpacity={0.8}
                   key={note._id || note.localId}
-                  onPress={() => setSelectedNote(note)}
+                  onPress={() => {
+                    setReaderTab(hasPdf ? "pdf" : "text");
+                    setSelectedNote(note);
+                  }}
                 >
                   <Card style={styles.noteItemCard}>
                     <View style={styles.noteCardHeader}>
                       <View style={styles.chapterTag}>
                         <Text style={styles.chapterTagText}>
-                          {note.chapterId?.title ? note.chapterId.title.split(":")[0] : "NOTE"}
+                          {note.chapterId?.title ? note.chapterId.title.split(":")[0] : hasPdf ? "PDF" : "NOTE"}
                         </Text>
                       </View>
                       <Text numberOfLines={1} style={styles.chapterNameText}>
                         {note.chapterId?.title || selectedSubject.name}
                       </Text>
+                      {hasPdf && (
+                        <View style={styles.pdfTag}>
+                          <Icon color="#B91C1C" name="document-text" size={11} />
+                          <Text style={styles.pdfTagText}>PDF{sizeMb ? ` · ${sizeMb}` : ""}</Text>
+                        </View>
+                      )}
                       <Icon color={COLORS.primary} name="chevron-forward" size={16} />
                     </View>
 
@@ -342,14 +358,19 @@ export function NotesScreen({
                     ) : null}
 
                     <View style={styles.readOfflinePill}>
-                      <Icon color={COLORS.primaryDark} name="shield-checkmark" size={13} />
+                      <Icon color={COLORS.primaryDark} name={hasPdf && !pdfCached ? "cloud-download-outline" : "shield-checkmark"} size={13} />
                       <Text style={styles.readOfflineText}>
-                        Protected Offline Content · Tap to Read
+                        {hasPdf
+                          ? pdfCached
+                            ? "Offline PDF Ready · Tap to View"
+                            : "PDF Guide · Tap to Open & Cache Offline"
+                          : "Protected Offline Content · Tap to Read"}
                       </Text>
                     </View>
                   </Card>
                 </TouchableOpacity>
-              ))}
+                );
+              })}
 
               {personalNotes.length > 0 && (
                 <View style={styles.personalSection}>
@@ -478,68 +499,115 @@ export function NotesScreen({
           </View>
 
           {selectedNote ? (
-            <ScrollView
-              contentContainerStyle={styles.readerContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.readerMetaRow}>
-                <View style={styles.readerSubjectBadge}>
-                  <Text style={styles.readerSubjectText}>
-                    {selectedSubject?.name || selectedNote.subjectId?.name || "Study Note"}
+            selectedNote.pdfFileId ? (
+              <View style={styles.flexOne}>
+                <View style={styles.pdfReaderTopInfo}>
+                  <Text numberOfLines={2} style={styles.pdfReaderTitle}>
+                    {selectedNote.title}
                   </Text>
+                  {Boolean(selectedNote.body && selectedNote.body.trim()) && (
+                    <View style={styles.readerTabBar}>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => setReaderTab("pdf")}
+                        style={[styles.readerTabBtn, readerTab === "pdf" && styles.readerTabBtnActive]}
+                      >
+                        <Text style={[styles.readerTabText, readerTab === "pdf" && styles.readerTabTextActive]}>
+                          PDF Document
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => setReaderTab("text")}
+                        style={[styles.readerTabBtn, readerTab === "text" && styles.readerTabBtnActive]}
+                      >
+                        <Text style={[styles.readerTabText, readerTab === "text" && styles.readerTabTextActive]}>
+                          Summary Notes
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
-                {selectedNote.chapterId?.title ? (
-                  <Text style={styles.readerChapterText}>
-                    • {selectedNote.chapterId.title}
-                  </Text>
-                ) : null}
-              </View>
 
-              <Text style={styles.readerTitle}>{selectedNote.title}</Text>
-
-              <View style={styles.securityBanner}>
-                <Icon color={COLORS.primary} name="shield-checkmark" size={16} />
-                <Text style={styles.securityBannerText}>
-                  Protected in-app study material. Available offline. External copying and file downloads are restricted.
-                </Text>
-              </View>
-
-              {onAskAi && (
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    const ctx = {
-                      noteTitle: selectedNote.title,
-                      noteBody: selectedNote.body,
-                      subjectName: selectedSubject?.name || selectedNote.subjectId?.name,
-                      chapterTitle: selectedNote.chapterId?.title
-                    };
-                    setSelectedNote(null);
-                    onAskAi(ctx);
-                  }}
-                  style={styles.askAiNoteBanner}
-                >
-                  <View style={styles.askAiNoteLeft}>
-                    <Icon color={COLORS.primary} name="sparkles" size={20} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.askAiNoteTitle}>Ask AI Tutor about this Note</Text>
-                      <Text style={styles.askAiNoteSub}>
-                        Get explanations, summaries, or sample exam questions
+                {readerTab === "pdf" ? (
+                  <OfflinePdfViewer note={selectedNote} />
+                ) : (
+                  <ScrollView
+                    contentContainerStyle={styles.readerContent}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <View style={styles.readerBodyContainer}>
+                      <Text style={styles.readerBodyText}>
+                        {selectedNote.body || "No text provided for this note."}
                       </Text>
                     </View>
-                  </View>
-                  <View style={styles.askAiNoteBtn}>
-                    <Text style={styles.askAiNoteBtnText}>Ask AI ✨</Text>
-                  </View>
-                </TouchableOpacity>
-              )}
-
-              <View style={styles.readerBodyContainer}>
-                <Text style={styles.readerBodyText}>
-                  {selectedNote.body || "No text provided for this note."}
-                </Text>
+                  </ScrollView>
+                )}
               </View>
-            </ScrollView>
+            ) : (
+              <ScrollView
+                contentContainerStyle={styles.readerContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.readerMetaRow}>
+                  <View style={styles.readerSubjectBadge}>
+                    <Text style={styles.readerSubjectText}>
+                      {selectedSubject?.name || selectedNote.subjectId?.name || "Study Note"}
+                    </Text>
+                  </View>
+                  {selectedNote.chapterId?.title ? (
+                    <Text style={styles.readerChapterText}>
+                      • {selectedNote.chapterId.title}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <Text style={styles.readerTitle}>{selectedNote.title}</Text>
+
+                <View style={styles.securityBanner}>
+                  <Icon color={COLORS.primary} name="shield-checkmark" size={16} />
+                  <Text style={styles.securityBannerText}>
+                    Protected in-app study material. Available offline. External copying and file downloads are restricted.
+                  </Text>
+                </View>
+
+                {onAskAi && (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      const ctx = {
+                        noteTitle: selectedNote.title,
+                        noteBody: selectedNote.body,
+                        subjectName: selectedSubject?.name || selectedNote.subjectId?.name,
+                        chapterTitle: selectedNote.chapterId?.title
+                      };
+                      setSelectedNote(null);
+                      onAskAi(ctx);
+                    }}
+                    style={styles.askAiNoteBanner}
+                  >
+                    <View style={styles.askAiNoteLeft}>
+                      <Icon color={COLORS.primary} name="sparkles" size={20} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.askAiNoteTitle}>Ask AI Tutor about this Note</Text>
+                        <Text style={styles.askAiNoteSub}>
+                          Get explanations, summaries, or sample exam questions
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.askAiNoteBtn}>
+                      <Text style={styles.askAiNoteBtnText}>Ask AI ✨</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+
+                <View style={styles.readerBodyContainer}>
+                  <Text style={styles.readerBodyText}>
+                    {selectedNote.body || "No text provided for this note."}
+                  </Text>
+                </View>
+              </ScrollView>
+            )
           ) : null}
         </SafeAreaView>
       </Modal>
@@ -1047,6 +1115,57 @@ const styles = StyleSheet.create({
   lockedUpgradeBtnText: {
     fontSize: 15,
     fontWeight: "800",
+    color: "#fff"
+  },
+  pdfTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: RADIUS.sm
+  },
+  pdfTagText: {
+    color: "#B91C1C",
+    fontSize: 10,
+    fontWeight: "800"
+  },
+  pdfReaderTopInfo: {
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: 8
+  },
+  pdfReaderTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  readerTabBar: {
+    flexDirection: "row",
+    gap: 8
+  },
+  readerTabBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border
+  },
+  readerTabBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary
+  },
+  readerTabText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.textMuted
+  },
+  readerTabTextActive: {
     color: "#fff"
   }
 });

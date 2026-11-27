@@ -69,33 +69,33 @@ jobs:
             exit 1
           fi
           echo "Found APK: $APK_PATH"
-          cp "$APK_PATH" release-artifacts/burka-exam-v1.0.0-build34.apk
+          cp "$APK_PATH" release-artifacts/burka-exam-v1.0.0-build35.apk
           ls -lh release-artifacts/
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: burka-exam-v1.0.0-build34
-          path: release-artifacts/burka-exam-v1.0.0-build34.apk
+          name: burka-exam-v1.0.0-build35
+          path: release-artifacts/burka-exam-v1.0.0-build35.apk
           retention-days: 30
 
       - name: Publish or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-artifacts/burka-exam-v1.0.0-build34.apk
-          name: Burka Exam Mobile v1.0.0 (Build 34)
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0-build.34' }}
+          files: release-artifacts/burka-exam-v1.0.0-build35.apk
+          name: Burka Exam Mobile v1.0.0 (Build 35)
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0-build.35' }}
           body: |
-            ## 📱 Burka Exam Mobile - Android APK (Build 34)
+            ## 📱 Burka Exam Mobile - Android APK (Build 35)
 
             ### 🚀 Highlights & Fixes:
-            - **Stream-Scoped Content for Students:** Subjects, Exams, and Study Notes strictly display only the student's registered stream (`Natural Science` or `Social Science` + shared common subjects) — removed the "All Streams" toggle from Exams.
-            - **Grade 12 Home Screen:** Removed the Grade 9–12 selector from Home screen so it directly displays Grade 12 subjects for the student's stream.
+            - **Offline PDF Study Notes Reader:** Staff-uploaded PDF guides (including all diagrams, formulas, tables, and pictures) are now cached inside the app (`expo-file-system`) and rendered cleanly offline via the built-in PDF viewer.
+            - **Full Offline Sync Support:** Study PDFs also download automatically when students use **Download All Offline Content** in Profile.
+            - **Stream-Scoped Content & Grade 12 Home:** Maintains stream-scoped Subjects, Exams, and Study Notes for Natural/Social Science students.
             - **minSdkVersion stays at 26** — app supports all devices from **Android 8.0 Oreo** and above.
-            - **All Service & Stream Tests Passing:** Full regression and unit test suite verified.
 
             ### 📥 How to Install:
-            1. Download `burka-exam-v1.0.0-build34.apk` below.
+            1. Download `burka-exam-v1.0.0-build35.apk` below.
             2. If you have an older crashing build installed on your phone, **uninstall it first** via Android Settings to clear the system crash quarantine.
             3. Open the downloaded APK and tap **Install**.
           draft: false

@@ -41,7 +41,7 @@ import {
   XIcon,
   ZapIcon
 } from "lucide-react";
-import { apiRequest, clearSession, saveSession } from "./services/api.js";
+import { apiFetchBlob, apiRequest, clearSession, saveSession } from "./services/api.js";
 import { ROLE_LABELS, roleBadge, statusBadge } from "./components/Badge.jsx";
 import { SkeletonStats, SkeletonTable } from "./components/Spinner.jsx";
 import { Notice } from "./components/Notice.jsx";
@@ -1557,6 +1557,9 @@ function StaffNotesPage({ user }) {
   const [viewingNote, setViewingNote] = useState(null);
   const [editingNote, setEditingNote] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [pdfUpload, setPdfUpload] = useState(null);
+  const [removePdf, setRemovePdf] = useState(false);
+  const [openingPdfId, setOpeningPdfId] = useState(null);
   const [form, setForm] = useState({
     title: "",
     subjectId: "",
@@ -1599,13 +1602,63 @@ function StaffNotesPage({ user }) {
 
   useEffect(() => { load(); }, [load]);
 
+  function handlePdfFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      setMsg({ text: "Please select a valid PDF (.pdf) file.", type: "error" });
+      e.target.value = "";
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setMsg({ text: "PDF file must be 15 MB or smaller.", type: "error" });
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPdfUpload({
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: "application/pdf",
+        dataUrl: String(reader.result || "")
+      });
+      setRemovePdf(false);
+      setForm(prev => ({ ...prev, fileType: "pdf" }));
+    };
+    reader.onerror = () => {
+      setMsg({ text: "Could not read selected PDF file.", type: "error" });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function openStoredPdf(note) {
+    if (!note?._id) return;
+    setOpeningPdfId(note._id);
+    try {
+      const blob = await apiFetchBlob(`/notes/${note._id}/pdf`);
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err) {
+      setMsg({ text: err.message || "Could not open PDF file.", type: "error" });
+    } finally {
+      setOpeningPdfId(null);
+    }
+  }
+
   async function createNote(e) {
     e.preventDefault();
     setSaving(true);
     try {
+      const payload = { ...form };
+      if (pdfUpload) {
+        payload.pdfUpload = pdfUpload;
+      }
       await apiRequest("/notes", {
         method: "POST",
-        body: JSON.stringify(form)
+        body: JSON.stringify(payload)
       });
       setMsg({ text: "Educational study material created successfully.", type: "success" });
       closeModal();
@@ -1631,6 +1684,8 @@ function StaffNotesPage({ user }) {
  
   function openEditModal(note) {
     setEditingNote(note);
+    setPdfUpload(null);
+    setRemovePdf(false);
     setForm({
       title: note.title || "",
       subjectId: note.subjectId?._id || note.subjectId || "",
@@ -1647,6 +1702,8 @@ function StaffNotesPage({ user }) {
   function closeModal() {
     setShowModal(false);
     setEditingNote(null);
+    setPdfUpload(null);
+    setRemovePdf(false);
     setForm({ title: "", subjectId: "", chapterId: "", fileType: "pdf", fileUrl: "", body: "", isPublic: true, isPremium: false });
   }
 
@@ -1654,9 +1711,15 @@ function StaffNotesPage({ user }) {
     e.preventDefault();
     setSaving(true);
     try {
+      const payload = { ...form };
+      if (pdfUpload) {
+        payload.pdfUpload = pdfUpload;
+      } else if (removePdf) {
+        payload.removePdf = true;
+      }
       await apiRequest(`/notes/${editingNote._id}`, {
         method: "PUT",
-        body: JSON.stringify(form)
+        body: JSON.stringify(payload)
       });
       setMsg({ text: "Study note updated successfully.", type: "success" });
       closeModal();
@@ -1744,7 +1807,18 @@ function StaffNotesPage({ user }) {
                         </div>
                       </td>
                       <td>
-                        {n.fileUrl ? (
+                        {n.pdfFileId ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary"
+                            disabled={openingPdfId === n._id}
+                            onClick={() => openStoredPdf(n)}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                          >
+                            <FileTextIcon size={13} />
+                            {openingPdfId === n._id ? "Opening…" : `PDF (${((n.pdfFileSize || 0) / (1024 * 1024)).toFixed(1)} MB)`}
+                          </button>
+                        ) : n.fileUrl ? (
                           <a href={n.fileUrl} target="_blank" rel="noreferrer" style={{ color: "var(--primary-light)", textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 4 }}>
                             <DownloadIcon size={13} /> View Link
                           </a>
@@ -1825,6 +1899,47 @@ function StaffNotesPage({ user }) {
           </div>
 
           <div className="field">
+            <label>Upload PDF File (Offline Mobile Viewing, Max 15 MB)</label>
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={handlePdfFileChange}
+            />
+            {pdfUpload ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+                <span className="badge badge-green">
+                  Selected: {pdfUpload.fileName} ({(pdfUpload.fileSize / (1024 * 1024)).toFixed(2)} MB)
+                </span>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPdfUpload(null)}>
+                  Clear Selection
+                </button>
+              </div>
+            ) : editingNote?.pdfFileId && !removePdf ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+                <span className="badge badge-info">
+                  Attached: {editingNote.pdfFileName || "study-note.pdf"} ({((editingNote.pdfFileSize || 0) / (1024 * 1024)).toFixed(2)} MB)
+                </span>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => openStoredPdf(editingNote)}>
+                  Preview PDF
+                </button>
+                <button type="button" className="btn btn-sm btn-danger" onClick={() => setRemovePdf(true)}>
+                  Remove PDF
+                </button>
+              </div>
+            ) : removePdf ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+                <span className="badge badge-amber">Existing PDF will be removed on save</span>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => setRemovePdf(false)}>
+                  Keep Existing PDF
+                </button>
+              </div>
+            ) : null}
+            <span style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
+              Students can cache and read uploaded PDFs (including diagrams, formulas, and pictures) offline inside the mobile app.
+            </span>
+          </div>
+
+          <div className="field">
             <label>File URL / Cloud Link (Optional)</label>
             <input
               placeholder="https://drive.google.com/... or https://res.cloudinary.com/..."
@@ -1837,10 +1952,10 @@ function StaffNotesPage({ user }) {
           </div>
 
           <div className="field">
-            <label>Overview, Key Formulas &amp; Study Text *</label>
+            <label>Overview, Key Formulas &amp; Study Text {pdfUpload || (editingNote?.pdfFileId && !removePdf) ? "(Optional)" : "*"}</label>
             <textarea
               rows={6}
-              placeholder="Write formulas, definitions, rules, and core concepts. Students can read this directly in the mobile app offline without downloading any external app..."
+              placeholder="Write formulas, definitions, rules, and core concepts. Students can read this directly in the mobile app offline..."
               value={form.body}
               onChange={e => setForm({ ...form, body: e.target.value })}
             />
@@ -1867,6 +1982,23 @@ function StaffNotesPage({ user }) {
               <span className={`badge ${viewingNote.isPremium ? "badge-amber" : "badge-green"}`}>{viewingNote.isPremium ? "Premium" : "Free"}</span>
               <span className="badge badge-gray">By {viewingNote.uploadedBy?.displayName || "Teacher"}</span>
             </div>
+
+            {viewingNote.pdfFileId && (
+              <div style={{ marginBottom: 16, padding: "10px 14px", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "var(--r-md)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div>
+                  <strong>Uploaded PDF: </strong>
+                  <span>{viewingNote.pdfFileName || "study-note.pdf"} ({((viewingNote.pdfFileSize || 0) / (1024 * 1024)).toFixed(2)} MB)</span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  disabled={openingPdfId === viewingNote._id}
+                  onClick={() => openStoredPdf(viewingNote)}
+                >
+                  {openingPdfId === viewingNote._id ? "Opening…" : "Open PDF"}
+                </button>
+              </div>
+            )}
 
             {viewingNote.fileUrl && (
               <div style={{ marginBottom: 16, padding: "10px 14px", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "var(--r-md)" }}>

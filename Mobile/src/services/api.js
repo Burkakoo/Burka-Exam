@@ -182,6 +182,19 @@ async function tryRefreshAccessToken() {
   return refreshPromise;
 }
 
+export function getApiBaseUrl() {
+  return API_URL;
+}
+
+export async function getValidAccessToken(forceRefresh = false) {
+  if (forceRefresh) {
+    return await tryRefreshAccessToken();
+  }
+  const existing = await secureGet("ethioprep_token");
+  if (existing) return existing;
+  return await tryRefreshAccessToken();
+}
+
 export async function request(path, options = {}, isRetry = false) {
   const token = await secureGet("ethioprep_token");
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };

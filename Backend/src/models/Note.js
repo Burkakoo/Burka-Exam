@@ -29,6 +29,23 @@ const noteSchema = new mongoose.Schema(
       type: String,
       trim: true
     },
+    pdfFileId: {
+      type: mongoose.Schema.Types.ObjectId
+    },
+    pdfFileName: {
+      type: String,
+      trim: true,
+      maxlength: 255
+    },
+    pdfFileSize: {
+      type: Number,
+      min: 0
+    },
+    pdfMimeType: {
+      type: String,
+      trim: true,
+      maxlength: 100
+    },
     isPublic: {
       type: Boolean,
       default: true

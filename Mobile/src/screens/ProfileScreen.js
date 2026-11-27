@@ -145,8 +145,13 @@ export function ProfileScreen({ user, isPremium = false, onNavigatePayments, onU
     setDownloadingOffline(true);
     setDownloadProgress("Connecting to server...");
     try {
-      const res = await downloadOfflineBundle(user?.stream, (msg) => setDownloadProgress(msg));
-      setSuccess(`Downloaded ${res.questionCount} questions across ${res.examCount} exams for offline practice!`);
+      const res = await downloadOfflineBundle(
+        user?.stream,
+        (msg) => setDownloadProgress(msg),
+        { isPremium: Boolean(user?.isPremium) }
+      );
+      const pdfNote = res.pdfCount > 0 ? ` and ${res.pdfCount} study PDF(s)` : "";
+      setSuccess(`Downloaded ${res.questionCount} questions across ${res.examCount} exams${pdfNote} for offline study!`);
       const status = await getOfflineSyncStatus();
       setOfflineStatus(status);
     } catch (err) {

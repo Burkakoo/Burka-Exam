@@ -2,6 +2,13 @@
 import { Note } from "../models/Note.js";
 import { LearningProgress } from "../models/LearningProgress.js";
 import { SyncChange } from "../models/SyncChange.js";
+import {
+  deleteNotePdfFromGridFs,
+  openNotePdfStream,
+  parsePdfUploadPayload,
+  sanitizePdfFileName,
+  saveNotePdfToGridFs
+} from "../services/notePdf.service.js";
 
 export async function listNotes(request, response) {
   try {
@@ -69,6 +76,7 @@ export async function createNote(request, response) {
       body = "",
       fileType = "pdf",
       fileUrl,
+      pdfUpload,
       isPublic = true,
       isPremium = false,
       subjectId,
@@ -79,11 +87,18 @@ export async function createNote(request, response) {
       localId
     } = request.body;
 
-    if (!title || (!body && !fileUrl)) {
-      return response.status(400).json({ error: "Title and content (or file URL) are required." });
+    const isStaff = ["admin", "teacher", "content_manager"].includes(request.user?.role);
+    const hasPdfUpload = isStaff && Boolean(pdfUpload && (pdfUpload.base64 || pdfUpload.dataUrl));
+
+    if (!title || (!String(body || "").trim() && !String(fileUrl || "").trim() && !hasPdfUpload)) {
+      return response.status(400).json({ error: "Title and content, file URL, or uploaded PDF are required." });
     }
 
-    const isStaff = ["admin", "teacher", "content_manager"].includes(request.user?.role);
+    let parsedPdf = null;
+    if (hasPdfUpload) {
+      parsedPdf = parsePdfUploadPayload(pdfUpload);
+    }
+
     const resolvedChapter = chapterId || topicId;
 
     const note = await Note.create({
@@ -91,7 +106,7 @@ export async function createNote(request, response) {
       uploadedBy: isStaff ? request.user._id : undefined,
       title: String(title).trim(),
       body: String(body || "").trim(),
-      fileType: fileType || "pdf",
+      fileType: parsedPdf ? "pdf" : fileType || "pdf",
       fileUrl: fileUrl ? String(fileUrl).trim() : undefined,
       isPublic: isStaff ? Boolean(isPublic) : false,
       isPremium: Boolean(isPremium),
@@ -103,16 +118,31 @@ export async function createNote(request, response) {
       status: "active"
     });
 
+    if (parsedPdf) {
+      const savedPdf = await saveNotePdfToGridFs({
+        ...parsedPdf,
+        noteId: note._id,
+        uploadedBy: request.user._id
+      });
+      note.pdfFileId = savedPdf.fileId;
+      note.pdfFileName = savedPdf.fileName;
+      note.pdfFileSize = savedPdf.fileSize;
+      note.pdfMimeType = savedPdf.mimeType;
+      note.fileType = "pdf";
+      await note.save();
+    }
+
     return response.status(201).json({ note });
   } catch (error) {
     console.error(error);
-    return response.status(500).json({ error: "Failed to create note." });
+    return response.status(error?.status || 500).json({ error: error?.status ? error.message : "Failed to create note." });
   }
 }
 
 export async function updateNote(request, response) {
   try {
     const { id } = request.params;
+    const isStaff = ["admin", "teacher", "content_manager"].includes(request.user?.role);
     const isStaffLead = ["admin", "content_manager"].includes(request.user?.role);
     const query = isStaffLead ? { _id: id } : { _id: id, userId: request.user._id };
     const note = await Note.findOne(query);
@@ -142,11 +172,38 @@ export async function updateNote(request, response) {
       }
     }
 
+    const { pdfUpload, removePdf } = request.body;
+    if (isStaff && removePdf === true && note.pdfFileId) {
+      await deleteNotePdfFromGridFs(note.pdfFileId);
+      note.pdfFileId = undefined;
+      note.pdfFileName = undefined;
+      note.pdfFileSize = undefined;
+      note.pdfMimeType = undefined;
+    }
+
+    if (isStaff && pdfUpload && (pdfUpload.base64 || pdfUpload.dataUrl)) {
+      const parsedPdf = parsePdfUploadPayload(pdfUpload);
+      const oldPdfId = note.pdfFileId;
+      const savedPdf = await saveNotePdfToGridFs({
+        ...parsedPdf,
+        noteId: note._id,
+        uploadedBy: request.user._id
+      });
+      note.pdfFileId = savedPdf.fileId;
+      note.pdfFileName = savedPdf.fileName;
+      note.pdfFileSize = savedPdf.fileSize;
+      note.pdfMimeType = savedPdf.mimeType;
+      note.fileType = "pdf";
+      if (oldPdfId) {
+        await deleteNotePdfFromGridFs(oldPdfId);
+      }
+    }
+
     await note.save();
     return response.json({ note });
   } catch (error) {
     console.error(error);
-    return response.status(500).json({ error: "Failed to update note." });
+    return response.status(error?.status || 500).json({ error: error?.status ? error.message : "Failed to update note." });
   }
 }
 
@@ -161,6 +218,14 @@ export async function deleteNote(request, response) {
       return response.status(404).json({ error: "Note not found." });
     }
 
+    if (note.pdfFileId) {
+      await deleteNotePdfFromGridFs(note.pdfFileId);
+      note.pdfFileId = undefined;
+      note.pdfFileName = undefined;
+      note.pdfFileSize = undefined;
+      note.pdfMimeType = undefined;
+    }
+
     note.status = "deleted";
     await note.save();
 
@@ -168,6 +233,121 @@ export async function deleteNote(request, response) {
   } catch (error) {
     console.error(error);
     return response.status(500).json({ error: "Failed to delete note." });
+  }
+}
+
+export async function uploadNotePdf(request, response) {
+  try {
+    const { id } = request.params;
+    const isStaffLead = ["admin", "content_manager"].includes(request.user?.role);
+    const query = isStaffLead ? { _id: id } : { _id: id, userId: request.user._id };
+    const note = await Note.findOne(query);
+
+    if (!note || note.status === "deleted") {
+      return response.status(404).json({ error: "Note not found." });
+    }
+
+    const parsedPdf = parsePdfUploadPayload(request.body);
+    const oldPdfId = note.pdfFileId;
+    const savedPdf = await saveNotePdfToGridFs({
+      ...parsedPdf,
+      noteId: note._id,
+      uploadedBy: request.user._id
+    });
+
+    note.pdfFileId = savedPdf.fileId;
+    note.pdfFileName = savedPdf.fileName;
+    note.pdfFileSize = savedPdf.fileSize;
+    note.pdfMimeType = savedPdf.mimeType;
+    note.fileType = "pdf";
+    await note.save();
+
+    if (oldPdfId) {
+      await deleteNotePdfFromGridFs(oldPdfId);
+    }
+
+    return response.json({ note });
+  } catch (error) {
+    console.error(error);
+    return response.status(error?.status || 500).json({ error: error?.status ? error.message : "Failed to upload PDF." });
+  }
+}
+
+export async function deleteNotePdf(request, response) {
+  try {
+    const { id } = request.params;
+    const isStaffLead = ["admin", "content_manager"].includes(request.user?.role);
+    const query = isStaffLead ? { _id: id } : { _id: id, userId: request.user._id };
+    const note = await Note.findOne(query);
+
+    if (!note || note.status === "deleted") {
+      return response.status(404).json({ error: "Note not found." });
+    }
+
+    if (note.pdfFileId) {
+      await deleteNotePdfFromGridFs(note.pdfFileId);
+    }
+
+    note.pdfFileId = undefined;
+    note.pdfFileName = undefined;
+    note.pdfFileSize = undefined;
+    note.pdfMimeType = undefined;
+    await note.save();
+
+    return response.json({ note });
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ error: "Failed to remove PDF from note." });
+  }
+}
+
+export async function downloadNotePdf(request, response) {
+  try {
+    const { id } = request.params;
+    const note = await Note.findOne({ _id: id, status: { $ne: "deleted" } }).lean();
+
+    if (!note || !note.pdfFileId) {
+      return response.status(404).json({ error: "PDF attachment not found for this study note." });
+    }
+
+    const isStaff = ["admin", "teacher", "content_manager"].includes(request.user?.role);
+    const isOwner = String(note.userId || "") === String(request.user?._id || "");
+
+    if (!isStaff && !isOwner) {
+      if (!note.isPublic) {
+        return response.status(403).json({ error: "You do not have access to this study note." });
+      }
+      if (note.isPremium && request.user?.isPremium !== true) {
+        return response.status(403).json({ error: "Premium subscription required to access this PDF note." });
+      }
+    }
+
+    const opened = await openNotePdfStream(note.pdfFileId);
+    if (!opened) {
+      return response.status(404).json({ error: "Stored PDF file could not be found." });
+    }
+
+    const fileName = sanitizePdfFileName(note.pdfFileName || `${note.title}.pdf`).replace(/"/g, "");
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
+    response.setHeader("Cache-Control", "private, max-age=3600");
+    if (opened.fileDoc?.length) {
+      response.setHeader("Content-Length", String(opened.fileDoc.length));
+    }
+
+    opened.stream.on("error", (streamErr) => {
+      console.error("[downloadNotePdf] stream error:", streamErr);
+      if (!response.headersSent) {
+        response.status(500).json({ error: "Failed to read stored PDF." });
+      } else {
+        response.end();
+      }
+    });
+
+    return opened.stream.pipe(response);
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ error: "Failed to download PDF." });
   }
 }
 

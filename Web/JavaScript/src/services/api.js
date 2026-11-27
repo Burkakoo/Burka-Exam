@@ -172,6 +172,37 @@ export async function apiRequest(path, options = {}, isRetry = false) {
   }
 }
 
+export async function apiFetchBlob(path, options = {}, isRetry = false) {
+  const token = localStorage.getItem("ethioprep_token");
+  const headers = { ...options.headers };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+
+  if (response.status === 401 && !isRetry) {
+    const newAccessToken = await tryRefreshWebAccessToken();
+    if (newAccessToken) {
+      return apiFetchBlob(path, options, true);
+    }
+    clearSession();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("burka:session-expired"));
+    }
+    const expiredError = new Error("Your staff session expired. Please sign in again.");
+    expiredError.status = 401;
+    throw expiredError;
+  }
+
+  if (!response.ok) {
+    const errBody = await response.json().catch(() => ({}));
+    const error = new Error(errBody.error || "Failed to load file.");
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.blob();
+}
+
 export function saveSession(session) {
   if (session.accessToken) {
     localStorage.setItem("ethioprep_token", session.accessToken);

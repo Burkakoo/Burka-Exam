@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { request } from "./api.js";
+import { syncBundleNotePdfs } from "./pdfCache.js";
 
 const OFFLINE_STATUS_KEY = "@ethioprep_offline_sync_status";
 
@@ -33,7 +34,7 @@ export async function purgeLegacyCacheKeys() {
   }
 }
 
-export async function downloadOfflineBundle(userStream = "natural", onProgress) {
+export async function downloadOfflineBundle(userStream = "natural", onProgress, options = {}) {
   try {
     if (onProgress) onProgress("Preparing offline storage...");
 
@@ -75,13 +76,18 @@ export async function downloadOfflineBundle(userStream = "natural", onProgress) 
       );
     }
 
-    // 3. Save Notes (Study notes across subjects)
+    // 3. Save Notes (Study notes across subjects) and cache attached PDFs offline
     if (Array.isArray(bundle.notes) && bundle.notes.length > 0) {
       await AsyncStorage.setItem(
         "@ethioprep_cached_notes",
         JSON.stringify(bundle.notes)
       );
     }
+
+    const pdfSync = await syncBundleNotePdfs(bundle.notes || [], {
+      isPremium: Boolean(options?.isPremium),
+      onProgress
+    });
 
     // 4. Map chapters by subject and save
     if (Array.isArray(bundle.chapters) && bundle.chapters.length > 0) {
@@ -171,7 +177,8 @@ export async function downloadOfflineBundle(userStream = "natural", onProgress) 
       examCount: bundle.examCount,
       questionCount: bundle.questionCount,
       subjectCount: bundle.subjectCount,
-      notesCount: bundle.notesCount || (bundle.notes || []).length
+      notesCount: bundle.notesCount || (bundle.notes || []).length,
+      pdfCount: pdfSync.downloaded
     };
   } catch (error) {
     console.error("Offline bundle download error:", error);
